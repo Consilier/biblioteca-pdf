@@ -1,0 +1,2123 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bibliotecă PDF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  --paper: #F2F4F1;
+  --surface: #FFFFFF;
+  --sunk: #E8ECE9;
+  --ink: #1A2420;
+  --muted: #586560;
+  --rule: #D2D9D5;
+  --stamp: #4A3FA0;
+  --stamp-ink: #FFFFFF;
+  --stamp-soft: #ECEAF8;
+  --mark: #FFE27A;
+  --mark-ink: #1A2420;
+  --warn: #8A5600;
+  --danger: #A33A3A;
+  --pdfbg: #D9DFDB;
+  --serif: "Literata", "Source Serif 4", Georgia, "Times New Roman", serif;
+  --sans: "Public Sans", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111513; --surface: #181D1A; --sunk: #0D100E; --ink: #E3E8E5; --muted: #96A29C; --rule: #2B3430;
+    --stamp: #A99FF2; --stamp-ink: #15121F; --stamp-soft: #24203D; --mark: rgba(250,204,21,.36); --mark-ink: #FFF6CF;
+    --warn: #E2B45A; --danger: #F08A8A; --pdfbg: #0A0D0B; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111513; --surface: #181D1A; --sunk: #0D100E; --ink: #E3E8E5; --muted: #96A29C; --rule: #2B3430;
+  --stamp: #A99FF2; --stamp-ink: #15121F; --stamp-soft: #24203D; --mark: rgba(250,204,21,.36); --mark-ink: #FFF6CF;
+  --warn: #E2B45A; --danger: #F08A8A; --pdfbg: #0A0D0B; color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); background: var(--surface); }
+html, body { height: 100%; margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--stamp); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+#app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 284px minmax(360px, 1fr) minmax(420px, 1.15fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "top top top" "lib search viewer";
+}
+
+/* Bara de sus */
+.top { grid-area: top; display: flex; align-items: center; gap: 14px; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--rule); min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; }
+.brand .seal { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--stamp); color: var(--stamp-ink); font: 600 18px/1 var(--serif); box-shadow: inset 0 0 0 2px var(--surface), 0 0 0 1.5px var(--stamp); }
+.stats { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .spacer { flex: 1; }
+.top .libbtn { display: none; }
+[hidden] { display: none !important; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 12px; border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; cursor: pointer; font-size: 14px; white-space: nowrap; }
+.btn:hover { background: var(--sunk); }
+.btn.primary { background: var(--stamp); border-color: var(--stamp); color: var(--stamp-ink); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--sunk); }
+.icon { width: 34px; padding: 0; }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn[disabled] { opacity: .4; cursor: default; }
+
+/* Biblioteca */
+.lib { grid-area: lib; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-right: 1px solid var(--rule); }
+.lib-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 16px 10px; }
+.lib-head h2 { margin: 0; font: 600 16px/1.2 var(--sans); }
+.lib-tools { display: flex; gap: 4px; padding: 0 12px 8px; font-size: 13px; color: var(--muted); align-items: center; }
+.lib-tools .btn { min-height: 28px; padding: 2px 8px; font-size: 13px; }
+.doclist { list-style: none; margin: 0; padding: 0 8px 8px; overflow: auto; flex: 1; min-height: 0; }
+.doc { display: grid; grid-template-columns: 28px 1fr auto; gap: 2px 4px; padding: 10px 6px 10px 4px; border-radius: 8px; align-items: start; }
+.doc:hover { background: var(--paper); }
+.doc input[type=checkbox] { width: 17px; height: 17px; margin: 3px 0 0 6px; accent-color: var(--stamp); cursor: pointer; }
+.doc-title { font: 600 14.5px/1.35 var(--serif); cursor: pointer; overflow-wrap: anywhere; background: none; border: 0; padding: 0; text-align: left; }
+.doc-title:hover { color: var(--stamp); }
+.doc-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.doc-warn { font-size: 12.5px; color: var(--warn); margin-top: 2px; }
+.doc-err { font-size: 12.5px; color: var(--danger); margin-top: 2px; }
+.doc-act { display: flex; opacity: .55; }
+.doc:hover .doc-act, .doc:focus-within .doc-act { opacity: 1; }
+.doc-act .btn { width: 30px; min-height: 30px; padding: 0; }
+.doc-act .btn.confirm { width: auto; padding: 0 8px; color: var(--danger); border-color: var(--danger); font-size: 12.5px; }
+.doc-rename { width: 100%; font: 600 14.5px/1.35 var(--serif); padding: 2px 6px; border: 1px solid var(--stamp); border-radius: 6px; background: var(--surface); }
+.bar { height: 4px; background: var(--sunk); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--stamp); width: 0; transition: width .2s; }
+.lib-empty { margin: 8px 16px; padding: 18px 16px; border: 1.5px dashed var(--rule); border-radius: 10px; color: var(--muted); font-size: 14px; }
+.lib-note { margin: 0; padding: 12px 16px 14px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--rule); }
+
+/* Căutarea */
+.search { grid-area: search; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.controls { padding: 18px 20px 12px; border-bottom: 1px solid var(--rule); background: var(--paper); }
+.qbox { display: flex; gap: 8px; }
+.qwrap { position: relative; flex: 1; min-width: 0; }
+.qwrap svg { position: absolute; left: 12px; top: 50%; translate: 0 -50%; width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
+#q { width: 100%; height: 44px; padding: 0 12px 0 40px; border: 1.5px solid var(--rule); border-radius: 10px; background: var(--surface); font-size: 16px; }
+#q:focus { border-color: var(--stamp); outline: none; box-shadow: 0 0 0 3px var(--stamp-soft); }
+.qbox .btn { height: 44px; padding: 0 16px; }
+.modes { display: inline-flex; margin-top: 12px; padding: 3px; gap: 2px; background: var(--sunk); border-radius: 9px; flex-wrap: wrap; }
+.modes button { border: 0; background: transparent; padding: 5px 11px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--muted); }
+.modes button[aria-checked="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--rule); }
+.opts { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 10px; font-size: 13.5px; color: var(--muted); }
+.opts label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.opts input { accent-color: var(--stamp); }
+.opts select { border: 1px solid var(--rule); border-radius: 7px; background: var(--surface); padding: 3px 6px; font-size: 13.5px; }
+.summary { padding: 10px 20px; font-size: 13.5px; color: var(--muted); border-bottom: 1px solid var(--rule); background: var(--paper); }
+.summary:empty { display: none; }
+.summary .btn { min-height: 26px; padding: 0 8px; font-size: 13px; margin-left: 6px; }
+.results { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.group-h { position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: 10px; padding: 9px 20px; background: var(--sunk); border-bottom: 1px solid var(--rule); font-size: 13px; }
+.group-h strong { font: 600 14px/1.3 var(--serif); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-h span { color: var(--muted); white-space: nowrap; }
+.hit { position: relative; padding: 14px 20px 14px 22px; border-bottom: 1px solid var(--rule); cursor: pointer; background: var(--surface); }
+.hit:hover { background: color-mix(in srgb, var(--surface) 70%, var(--paper)); }
+.hit[aria-current="true"] { background: var(--stamp-soft); }
+.hit[aria-current="true"]::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--stamp); }
+.hit-path { font-size: 12.5px; color: var(--muted); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit-cite { display: flex; align-items: baseline; gap: 10px; }
+.cite { font: 600 16.5px/1.35 var(--serif); color: var(--ink); }
+.cite sup { font-size: .68em; line-height: 0; }
+.cite em { font-style: normal; font-weight: 400; color: var(--muted); }
+.pgno { margin-left: auto; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.score { font-size: 12px; color: var(--stamp); font-weight: 600; white-space: nowrap; }
+.hit-text { margin: 6px 0 0; font: 15px/1.62 var(--serif); max-width: 70ch; overflow-wrap: anywhere; }
+mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padding: 0 1px; }
+.hit-act { display: flex; gap: 4px; margin-top: 8px; }
+.hit-act .btn { min-height: 28px; padding: 0 9px; font-size: 12.5px; color: var(--muted); }
+.more { display: block; margin: 12px 20px; }
+.empty { padding: 28px 22px; color: var(--muted); max-width: 62ch; }
+.empty h3 { margin: 0 0 8px; color: var(--ink); font: 600 18px/1.3 var(--serif); }
+.empty dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 14px 0 0; font-size: 14px; }
+.empty dt { font-family: var(--serif); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0 7px; }
+.empty dd { margin: 0; }
+
+/* Vizualizatorul */
+.viewer { grid-area: viewer; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--pdfbg); border-left: 1px solid var(--rule); }
+.v-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 16px; background: var(--surface); border-bottom: 1px solid var(--rule); min-height: 56px; }
+.v-title { flex: 1; min-width: 0; }
+.v-doc { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-cite { font: 600 15px/1.3 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-tools { display: flex; align-items: center; gap: 2px; }
+.v-tools .sep { width: 1px; height: 22px; background: var(--rule); margin: 0 4px; }
+.zoomval { font-size: 12.5px; color: var(--muted); min-width: 42px; text-align: center; }
+.vback { display: none; }
+.v-body { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 14px 18px 40px; overscroll-behavior: contain; }
+.v-foot { padding: 5px 14px; font-size: 12.5px; color: var(--muted); background: var(--surface); border-top: 1px solid var(--rule); text-align: center; }
+.v-empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); padding: 20px; }
+.v-empty .big { font: 400 64px/1 var(--serif); color: var(--rule); margin-bottom: 8px; }
+.pg { position: relative; margin: 0 auto 14px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 4px 14px rgba(0,0,0,.06); }
+.pg canvas { display: block; position: absolute; inset: 0; }
+.pg .ph { position: absolute; inset: 0; display: grid; place-items: center; color: #9aa59f; font-size: 13px; }
+.unit-band { position: absolute; left: 0; right: 0; background: rgba(74,63,160,.07); pointer-events: none; z-index: 1; }
+.unit-band::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--stamp); }
+.textLayer { position: absolute; text-align: initial; inset: 0; overflow: hidden; line-height: 1; -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; z-index: 2; }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.textLayer span.markedContent { top: 0; height: 0; }
+.textLayer mark { background: rgba(255,200,0,.42); color: transparent; padding: 0; border-radius: 2px; }
+.textLayer ::selection { background: rgba(74,63,160,.3); }
+.textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: -1; cursor: default; user-select: none; }
+
+/* Google Drive */
+.drive { margin: 0 12px 12px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); }
+.drive-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; }
+.drive-row svg { width: 18px; height: 18px; flex: none; color: var(--stamp); }
+.drive-status { margin-left: auto; font-weight: 400; font-size: 12.5px; color: var(--muted); text-align: right; }
+.drive-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.drive-btns .btn { min-height: 30px; padding: 2px 10px; font-size: 13px; }
+.drive-note { margin: 8px 0 0; font-size: 12.5px; color: var(--warn); }
+.src-h { display: flex; align-items: center; gap: 8px; padding: 14px 6px 4px 10px; font-size: 12.5px; color: var(--muted); }
+.src-h svg { width: 16px; height: 16px; flex: none; }
+.src-h .src-name { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-h .btn { margin-left: auto; width: 28px; min-height: 28px; padding: 0; }
+.src-h .btn.confirm { width: auto; padding: 0 8px; color: var(--danger); border-color: var(--danger); font-size: 12.5px; }
+.src-h .btn svg { width: 15px; height: 15px; }
+.src-empty { padding: 2px 12px 8px 34px; font-size: 12.5px; color: var(--muted); }
+.modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)); background: rgba(0,0,0,.38); }
+.modal[hidden] { display: none; }
+.modal-box { width: min(560px, 100%); height: min(620px, 100%); display: flex; flex-direction: column; background: var(--surface); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; }
+.modal-head { display: flex; align-items: center; gap: 8px; padding: 14px 10px 6px 18px; }
+.modal-head h3 { margin: 0; flex: 1; font: 600 17px/1.3 var(--serif); }
+.pk-tabs { display: flex; gap: 4px; padding: 4px 16px 8px; }
+.pk-tabs button { border: 1px solid var(--rule); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--muted); }
+.pk-tabs button[aria-pressed="true"] { background: var(--stamp-soft); border-color: var(--stamp); color: var(--ink); font-weight: 600; }
+.pk-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; padding: 6px 18px 8px; font-size: 13px; border-bottom: 1px solid var(--rule); }
+.pk-crumbs button { border: 0; background: none; padding: 2px 4px; color: var(--stamp); cursor: pointer; border-radius: 4px; }
+.pk-crumbs button:hover { background: var(--sunk); }
+.pk-crumbs span[aria-current] { font-weight: 600; padding: 2px 4px; }
+.pk-crumbs .sl { color: var(--muted); }
+.pk-list { list-style: none; margin: 0; padding: 6px 8px; overflow: auto; flex: 1; min-height: 0; }
+.pk-folder, .pk-file { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 14px; text-align: left; }
+.pk-folder { border: 0; background: none; cursor: pointer; }
+.pk-folder:hover { background: var(--sunk); }
+.pk-folder svg { width: 20px; height: 20px; color: var(--stamp); flex: none; }
+.pk-file { color: var(--muted); }
+.pk-file svg { width: 18px; height: 18px; flex: none; }
+.pk-folder span, .pk-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-msg { padding: 14px 10px; color: var(--muted); font-size: 14px; }
+.pk-msg.err { color: var(--danger); }
+.pk-link { display: flex; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--rule); }
+.pk-link input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); font-size: 14px; }
+.modal-foot { display: flex; align-items: center; gap: 8px; padding: 10px 16px 14px; border-top: 1px solid var(--rule); flex-wrap: wrap; }
+.pk-info { flex: 1; min-width: 160px; font-size: 12.5px; color: var(--muted); }
+
+/* Taburi (telefon) și sertar (ecrane medii) */
+.tabs { display: none; }
+.scrim { display: none; }
+.drop { position: fixed; inset: 0; z-index: 50; display: none; place-items: center; background: color-mix(in srgb, var(--stamp) 22%, transparent); backdrop-filter: blur(2px); }
+.drop div { padding: 28px 34px; background: var(--surface); border: 2px dashed var(--stamp); border-radius: 14px; font: 600 18px/1.4 var(--serif); }
+.drop.on { display: grid; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 60; max-width: min(520px, 92vw); padding: 10px 16px; border-radius: 10px; background: var(--ink); color: var(--paper); font-size: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.25); opacity: 0; pointer-events: none; transition: opacity .2s; }
+.toast.on { opacity: 1; }
+.banner { grid-column: 1 / -1; padding: 10px 18px; background: #FBE9E9; color: #7A1F1F; font-size: 14px; }
+
+@media (max-width: 1199px) {
+  #app { grid-template-columns: minmax(330px, 1fr) minmax(360px, 1.1fr); grid-template-areas: "top top" "search viewer"; }
+  .top .libbtn { display: inline-flex; }
+  .lib { position: fixed; z-index: 30; top: env(safe-area-inset-top, 0px); bottom: env(safe-area-inset-bottom, 0px); left: 0; width: min(340px, 88vw); transform: translateX(-102%); transition: transform .22s ease; box-shadow: 0 0 40px rgba(0,0,0,.2); }
+  #app.lib-open .lib { transform: none; }
+  #app.lib-open .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.28); }
+}
+@media (max-width: 759px) {
+  #app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top" "main" "tabs"; }
+  .top { padding: 8px 14px; }
+  .top .libbtn, #app.lib-open .scrim { display: none; }
+  .modes { display: flex; width: 100%; }
+  .modes button { flex: 1 1 auto; padding: 5px 6px; font-size: 13px; }
+  .lib, .search, .viewer { grid-area: main; position: static; transform: none; width: auto; box-shadow: none; border: 0; transition: none; }
+  #app:not([data-tab="lib"]) .lib, #app:not([data-tab="cautare"]) .search, #app:not([data-tab="document"]) .viewer { display: none; }
+  .controls { padding: 14px 14px 10px; }
+  .summary, .group-h, .hit { padding-left: 14px; padding-right: 14px; }
+  .qbox .btn { display: none; }
+  .vback { display: inline-flex; }
+  .v-head { padding-left: 6px; }
+  .v-body { padding: 10px 12px 30px; }
+  .tabs { display: flex; grid-area: tabs; background: var(--surface); border-top: 1px solid var(--rule); }
+  .tabs button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px 8px; border: 0; background: none; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .tabs button svg { width: 22px; height: 22px; }
+  .tabs button[aria-selected="true"] { color: var(--stamp); font-weight: 600; }
+  .stats { display: none; }
+  .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div id="app" data-tab="cautare">
+  <header class="top">
+    <button class="btn libbtn" id="libToggle" aria-controls="lib" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16.5 5.5l3.6 1 -3.4 13 -3.6-1z"/></svg>
+      <span>Bibliotecă</span>
+    </button>
+    <div class="brand"><span class="seal" aria-hidden="true">§</span><span>Bibliotecă PDF</span></div>
+    <span class="stats" id="stats"></span>
+    <span class="spacer"></span>
+  </header>
+
+  <aside class="lib" id="lib" aria-label="Documente">
+    <div class="lib-head">
+      <h2>Documente</h2>
+      <button class="btn primary" id="addBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Adaugă
+      </button>
+      <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
+    </div>
+    <div class="drive">
+      <div class="drive-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4.75 4.75 0 0 1-.5 9.5z"/></svg>
+        <span>Google Drive</span>
+        <span class="drive-status" id="driveStatus" aria-live="polite"></span>
+      </div>
+      <div class="drive-btns">
+        <button class="btn" id="driveAdd"><span id="driveAddLabel">Conectează un folder</span></button>
+        <button class="btn" id="driveSync" hidden>Sincronizează</button>
+      </div>
+      <p class="drive-note" id="driveNote" hidden></p>
+    </div>
+    <div class="lib-tools" id="libTools" hidden>
+      <span>Caută în:</span>
+      <button class="btn ghost" id="selAll">toate</button>
+      <button class="btn ghost" id="selNone">niciunul</button>
+    </div>
+    <ul class="doclist" id="docList"></ul>
+    <p class="lib-note">Fișierele rămân doar în acest browser, pe acest calculator. Nu sunt trimise nicăieri.</p>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="search" aria-label="Căutare">
+    <div class="controls">
+      <div class="qbox">
+        <div class="qwrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+          <label class="sr" for="q">Caută în bibliotecă</label>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Caută cuvinte, o expresie sau lipește un paragraf">
+        </div>
+        <button class="btn primary" id="go">Caută</button>
+      </div>
+      <div class="modes" role="radiogroup" aria-label="Tip de căutare">
+        <button role="radio" data-mode="cuvinte" aria-checked="true">Toate cuvintele</button>
+        <button role="radio" data-mode="exact" aria-checked="false">Expresie exactă</button>
+        <button role="radio" data-mode="similar" aria-checked="false">Paragraf similar</button>
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" id="optStem" checked> Forme flexionate</label>
+        <label><input type="checkbox" id="optWhole"> Cuvânt întreg</label>
+        <label>Ordine <select id="sort"><option value="rel">după relevanță</option><option value="doc">ca în document</option></select></label>
+      </div>
+    </div>
+    <div class="summary" id="summary" aria-live="polite"></div>
+    <div class="results" id="results"></div>
+  </main>
+
+  <section class="viewer" id="viewer" aria-label="Document">
+    <div class="v-head">
+      <button class="btn ghost icon vback" id="vBack" aria-label="Înapoi la rezultate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+      </button>
+      <div class="v-title"><div class="v-doc" id="vDoc">Niciun document deschis</div><div class="v-cite" id="vCite"></div></div>
+      <div class="v-tools">
+        <button class="btn ghost icon" id="prevHit" aria-label="Rezultatul anterior" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
+        <button class="btn ghost icon" id="nextHit" aria-label="Rezultatul următor" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <span class="sep"></span>
+        <button class="btn ghost icon" id="zoomOut" aria-label="Micșorează"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+        <span class="zoomval" id="zoomVal">100%</span>
+        <button class="btn ghost icon" id="zoomIn" aria-label="Mărește"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button>
+      </div>
+    </div>
+    <div class="v-body" id="vBody">
+      <div class="v-empty"><div><div class="big">§</div>Alege un rezultat ca să vezi pagina din document,<br>cu textul găsit evidențiat.</div></div>
+    </div>
+    <div class="v-foot" id="vFoot">&nbsp;</div>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Secțiuni">
+    <button role="tab" data-tab="lib" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16.5 5.5l3.6 1 -3.4 13 -3.6-1z"/></svg>Bibliotecă</button>
+    <button role="tab" data-tab="cautare" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>Căutare</button>
+    <button role="tab" data-tab="document" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>Document</button>
+  </nav>
+
+  <div class="modal" id="picker" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 id="pkTitle">Alege un folder din Google Drive</h3>
+        <button class="btn ghost icon" id="pkClose" aria-label="Închide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="pk-tabs">
+        <button data-root="root" aria-pressed="true">Drive-ul meu</button>
+        <button data-root="shared" aria-pressed="false">Partajate cu mine</button>
+      </div>
+      <nav class="pk-crumbs" id="pkCrumbs" aria-label="Cale"></nav>
+      <ul class="pk-list" id="pkList"></ul>
+      <div class="pk-link">
+        <label class="sr" for="pkUrl">Link către folder</label>
+        <input id="pkUrl" placeholder="sau lipește linkul unui folder din Drive" autocomplete="off">
+        <button class="btn" id="pkUrlGo">Deschide</button>
+      </div>
+      <div class="modal-foot">
+        <span class="pk-info" id="pkInfo"></span>
+        <button class="btn" id="pkCancel">Renunță</button>
+        <button class="btn primary" id="pkChoose" disabled>Adaugă folderul</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop" id="drop"><div>Eliberează ca să adaugi în bibliotecă</div></div>
+  <div class="toast" id="toast" role="status"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+/* Core: extragerea rândurilor, recunoașterea structurii (titlu/capitol/art./alin./lit.) și căutarea.
+   Fără dependențe de DOM, ca să poată fi testat separat. */
+const Core = (() => {
+  const DIAC = /[\u0300-\u036f]/g;
+  const LETTER = /[\p{L}\p{N}]/u;
+
+  // Normalizare caracter cu caracter, păstrând harta către textul original
+  function normWithMap(s) {
+    let out = '';
+    const map = [];
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      let n;
+      if (/\s/.test(ch)) n = ' ';
+      else if (/[\u2010-\u2015\u2212]/.test(ch)) n = '-';
+      else n = ch.normalize('NFKD').replace(DIAC, '').toLowerCase();
+      for (const c of n) { out += c; map.push(i); }
+    }
+    return { norm: out, map };
+  }
+  const norm = (s) => normWithMap(s).norm;
+
+  /* ---------- 1. Rânduri dintr-o pagină (cu detectarea a două coloane) ---------- */
+  function groupLines(items) {
+    const arr = items.slice().sort((p, q) => q.y - p.y || p.x - q.x);
+    const lines = [];
+    for (const it of arr) {
+      const ln = lines.length ? lines[lines.length - 1] : null;
+      if (ln && Math.abs(ln.y - it.y) <= Math.max(ln.h, it.h) * 0.45) {
+        ln.items.push(it);
+        if (it.h > ln.h) { ln.h = it.h; ln.y = it.y; }
+      } else lines.push({ y: it.y, h: it.h, items: [it] });
+    }
+    return lines;
+  }
+
+  function finishLine(ln) {
+    ln.items.sort((p, q) => p.x - q.x);
+    let t = '', prevEnd = null;
+    for (const it of ln.items) {
+      let s = it.s;
+      const sup = it.h < ln.h * 0.8 && it.y - ln.y > ln.h * 0.2 && /^\d+$/.test(s.trim());
+      if (sup) s = '^' + s.trim();
+      if (prevEnd !== null && !sup) {
+        const gap = it.x - prevEnd;
+        if (gap > ln.h * 0.15 && !/\s$/.test(t) && !/^\s/.test(s)) t += ' ';
+      }
+      t += s;
+      prevEnd = it.x + it.w;
+    }
+    ln.text = t.replace(/\s+/g, ' ').trim();
+    ln.x = ln.items[0].x;
+    ln.right = prevEnd;
+    return ln;
+  }
+
+  function splitLineAt(ln, g) {
+    const L = [], R = [];
+    for (const it of ln.items) (it.x + it.w / 2 < g ? L : R).push(it);
+    const mk = (items) => items.length ? { y: Math.max(...items.map(i => i.y)), h: Math.max(...items.map(i => i.h)), items } : null;
+    return [mk(L), mk(R)];
+  }
+
+  // items: [{str, transform, width, height}] din pdf.js; toTop(x,y) -> y în coordonate de afișare (de sus)
+  function pageLines(rawItems, pageW, pageH, toTop) {
+    const its = [];
+    for (const it of rawItems) {
+      if (!it.str || !it.str.trim()) continue;
+      const [a, b, c, d, e, f] = it.transform;
+      const h = Math.hypot(c, d) || Math.abs(d) || it.height || 10;
+      its.push({ s: it.str, x: e, y: f, w: it.width || 0, h });
+    }
+    if (!its.length) return [];
+    const all = groupLines(its);
+
+    let split = null, gw = 0;
+    const N = its.length;
+    const minX = Math.min(...its.map(i => i.x));
+    const maxX = Math.max(...its.map(i => i.x + i.w));
+    const span = maxX - minX;
+    if (all.length >= 12 && span > pageW * 0.45) {
+      const B = 120, cov = new Array(B).fill(0);
+      for (const it of its) {
+        const s = Math.max(0, Math.floor((it.x - minX) / span * B));
+        const e = Math.min(B - 1, Math.floor((it.x + it.w - minX) / span * B));
+        for (let k = s; k <= e; k++) cov[k]++;
+      }
+      const mid = cov.slice(Math.floor(B * 0.1), Math.ceil(B * 0.9)).filter(v => v > 0).sort((a, b) => a - b);
+      const thr = Math.max(2, 0.1 * (mid[Math.floor(mid.length / 2)] || 0));
+      let best = null, run = null;
+      const better = (r) => r && (!best || r.e - r.s > best.e - best.s);
+      for (let k = Math.floor(B * 0.3); k <= Math.ceil(B * 0.7); k++) {
+        if (cov[k] <= thr) { if (!run) run = { s: k, e: k }; else run.e = k; }
+        else { if (better(run)) best = run; run = null; }
+      }
+      if (better(run)) best = run;
+      if (best && best.e - best.s + 1 >= 2) {
+        const g = minX + ((best.s + best.e + 1) / 2) / B * span;
+        gw = (best.e - best.s + 1) / B * span;
+        const left = its.filter(i => i.x + i.w <= g).length;
+        const right = its.filter(i => i.x >= g).length;
+        if (left >= N * 0.2 && right >= N * 0.2) split = g;
+      }
+    }
+
+    let ordered;
+    if (split === null) ordered = all;
+    else {
+      const full = [], Lc = [], Rc = [];
+      for (const ln of all) {
+        const crosses = ln.items.some(i => i.x < split && i.x + i.w > split);
+        const li = ln.items.filter(i => i.x + i.w / 2 < split), ri = ln.items.filter(i => i.x + i.w / 2 >= split);
+        let isFull = crosses;
+        if (!isFull && li.length && ri.length) {
+          const lEnd = Math.max(...li.map(i => i.x + i.w)), rStart = Math.min(...ri.map(i => i.x));
+          if (rStart - lEnd < Math.min(gw * 0.5, ln.h * 1.2)) isFull = true;
+        }
+        if (isFull) full.push(ln);
+        else {
+          const [l, r] = splitLineAt(ln, split);
+          if (l) Lc.push(l);
+          if (r) Rc.push(r);
+        }
+      }
+      // verificare: coloanele chiar sunt text (rândurile umplu coloana), nu un tabel
+      Lc.forEach(finishLine); Rc.forEach(finishLine);
+      const fillL = Lc.filter(l => l.right > minX + 0.7 * (split - minX)).length / Math.max(1, Lc.length);
+      const fillR = Rc.filter(l => l.right > split + 0.7 * (maxX - split)).length / Math.max(1, Rc.length);
+      if (fillL < 0.4 || fillR < 0.4) ordered = all;
+      else {
+        ordered = [];
+        let li = 0, ri = 0;
+        full.sort((p, q) => q.y - p.y);
+        for (const fl of full) {
+          while (li < Lc.length && Lc[li].y > fl.y) ordered.push(Lc[li++]);
+          while (ri < Rc.length && Rc[ri].y > fl.y) ordered.push(Rc[ri++]);
+          ordered.push(fl);
+        }
+        while (li < Lc.length) ordered.push(Lc[li++]);
+        while (ri < Rc.length) ordered.push(Rc[ri++]);
+      }
+    }
+    return ordered.map(ln => {
+      if (ln.text === undefined) finishLine(ln);
+      const top = toTop ? toTop(ln.x, ln.y + ln.h * 0.85) : pageH - ln.y - ln.h * 0.85;
+      return { text: ln.text, top, h: ln.h, x: ln.x };
+    }).filter(l => l.text);
+  }
+
+  /* ---------- 2. Antete/subsoluri repetate ---------- */
+  function stripRunning(pages) {
+    const key = (t) => norm(t).replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+    const pageNum = /^(pag(ina|\.)?\s*)?\d{1,4}(\s*(din|\/)\s*\d{1,4})?$/i;
+    const counts = new Map();
+    const cand = (lines) => [...lines.slice(0, 3), ...lines.slice(-3)];
+    for (const p of pages) {
+      const seen = new Set();
+      for (const l of cand(p.lines)) { const k = key(l.text); if (!seen.has(k)) { seen.add(k); counts.set(k, (counts.get(k) || 0) + 1); } }
+    }
+    const lim = Math.max(2, Math.ceil(pages.length * 0.4));
+    for (const p of pages) {
+      const c = new Set(cand(p.lines));
+      p.lines = p.lines.filter(l => {
+        if (!c.has(l)) return true;
+        if (pageNum.test(l.text.trim())) return false;
+        if (/^(\d+\s+)?monitorul oficial al romaniei,?\s+partea/.test(norm(l.text))) return false;
+        return !(pages.length >= 2 && (counts.get(key(l.text)) || 0) >= lim && l.text.length < 160);
+      });
+    }
+  }
+
+  /* ---------- 3. Structura actelor normative ---------- */
+  const ID = '(a\\s+(?:\\d+|[a-z]+)-a|intai|[ivxlcdm]+(?:\\s*\\^\\s*\\d+)?|\\d+(?:\\s*\\^\\s*\\d+)?)';
+  const HEADS = [
+    { lvl: 1, key: 'carte', word: 'cartea', label: 'Cartea' },
+    { lvl: 2, key: 'parte', word: 'partea', label: 'Partea' },
+    { lvl: 3, key: 'titlu', word: 'titlul', label: 'Titlul' },
+    { lvl: 4, key: 'capitol', word: 'capitolul', label: 'Cap.' },
+    { lvl: 5, key: 'sectiune', word: 'sectiunea', label: 'Secț.' },
+    { lvl: 6, key: 'subsectiune', word: 'subsectiunea', label: 'Subsecț.' },
+  ].map(h => ({ ...h, re: new RegExp('^' + h.word + '\\s+' + ID + '(?=$|[\\s.:\\-–])\\s*[.:\\-–]?\\s*(.*)$') }));
+  const LEVELS = ['anexa', 'carte', 'parte', 'titlu', 'capitol', 'sectiune', 'subsectiune', 'liber'];
+  const ANEXA = /^anexa(?:\s+(?:nr\.?\s*)?([0-9ivxlc]+[a-z]?))?(?=$|[\s.:\-–])\s*[.:\-–]?\s*(.*)$/;
+  const ART = /^(?:Art\.|ART\.|Articolul|ARTICOLUL|Art)\s*(\d+|[IVXLC]+)(?:\s*\^\s*(\d+))?(?=$|[\s.:\-–])\s*(\.?\s*[-–—]|\.)?\s*(.*)$/;
+  const ART_REF = /^(alin|lit|din|pct|se |si |sunt|prevazut|,|;|\)|teza)/;
+  const ALIN = /^\((\d+)(?:\s*\^\s*(\d+))?\)\s*(.*)$/;
+  const LIT = /^([a-z])(?:\s*\^\s*(\d+))?\)\s+(.*)$/;
+  const PCT = /^(\d{1,3})(?:\s*\^\s*(\d+))?\.\s+(\S.*)$/;
+  const CLITIC_PRE = new Set(['intr', 'dintr', 'printr', 's', 'n', 'l', 'i', 'm', 'v', 'c', 'mi', 'ti', 'si', 'ne', 'va', 'le', 'nu', 'ce', 'de', 'pe', 'sa', 'cu', 'la']);
+  const CLITIC_POST = new Set(['o', 'un', 'una', 'unui', 'unei', 'a', 'au', 'ar', 'am', 'ai', 'i', 'l', 'le', 'ul', 'ului', 'urile', 'urilor', 'uri', 'lea', 'ii']);
+
+  function joinText(acc, next) {
+    if (!acc) return next;
+    const m = acc.match(/([\p{L}]+)-$/u);
+    if (m && /^[\p{Ll}]/u.test(next)) {
+      const pre = norm(m[1]);
+      const post = norm(next.split(/[\s,.;:]/)[0]);
+      if (CLITIC_PRE.has(pre) || CLITIC_POST.has(post)) return acc + next;
+      return acc.slice(0, -1) + next;
+    }
+    return acc + ' ' + next;
+  }
+
+  const isUpperLine = (t) => {
+    const letters = t.replace(/[^\p{L}]/gu, '');
+    return letters.length >= 4 && letters === letters.toLocaleUpperCase('ro') && t.length <= 110;
+  };
+  const roman = (s) => s.toUpperCase();
+  const fmtId = (raw) => {
+    let s = raw.replace(/\s+/g, ' ').replace(/\s*\^\s*/g, '^').trim();
+    if (/^[ivxlcdm]+(\^\d+)?$/.test(s)) s = roman(s.split('^')[0]) + (s.includes('^') ? '^' + s.split('^')[1] : '');
+    if (s === 'intai') s = 'întâi';
+    return s;
+  };
+  const sup = (s) => s ? '^' + s : '';
+
+  // pages: [{lines:[{text,top,h}], h}] -> units
+  function buildDoc(pages) {
+    stripRunning(pages);
+    const stream = [];
+    pages.forEach((p, pi) => {
+      // spațiere tipică pe pagină
+      const d = [];
+      for (let i = 1; i < p.lines.length; i++) { const g = p.lines[i].top - p.lines[i - 1].top; if (g > 0) d.push(g); }
+      d.sort((a, b) => a - b);
+      const med = d.length ? d[Math.floor(d.length / 2)] : 14;
+      p.lines.forEach((l, i) => {
+        const gap = i ? l.top - p.lines[i - 1].top : 0;
+        stream.push({ ...l, page: pi + 1, pageH: p.h, brk: i > 0 && (gap > med * 1.6 || gap < -5) });
+      });
+    });
+
+    const units = [];
+    const ctx = {}; // nivelurile de structură curente: key -> {label,title}
+    let art = null, alin = null, lit = null, pct = null;
+    let cur = null;
+    let artCount = 0, artMin = null, artMax = null;
+
+    const path = () => LEVELS.filter(k => ctx[k]).map(k => ({ label: ctx[k].label, title: ctx[k].title || '' }));
+    const cite = () => {
+      if (!art) return '';
+      let c = 'Art. ' + art.num;
+      if (alin) c += ' alin. (' + alin.n + sup(alin.s) + ')';
+      if (pct) c += ' pct. ' + pct.n + sup(pct.s);
+      if (lit) c += ' lit. ' + lit.l + sup(lit.s) + ')';
+      return c;
+    };
+    const flush = () => { if (cur && cur.text.trim()) units.push(cur); cur = null; };
+    const start = (ln, text, kind) => {
+      flush();
+      cur = { page: ln.page, top: ln.top / ln.pageH, pageEnd: ln.page, text: text || '', kind: kind || 'text', path: path(), cite: cite(), artTitle: art ? art.title || '' : '' };
+    };
+    const append = (ln, text) => {
+      if (!cur) start(ln, '', 'text');
+      cur.text = joinText(cur.text, text);
+      cur.pageEnd = ln.page;
+    };
+    const resetBelow = (lvl) => { LEVELS.forEach((k, i) => { if (i >= lvl) delete ctx[k]; }); art = alin = lit = pct = null; };
+
+    const prevEndsRef = () => cur && /(alin\.?|alineatul(ui)?|alineatele|lit\.?|litera|literele|pct\.?|punctul|art\.?|articolul|si|sau|,)\s*$/i.test(norm(cur.text));
+
+    const midSentence = () => cur && cur.text && !/[.;:!?)\]"”]$/.test(cur.text.trim());
+    const isMarkerLine = (t) => {
+      const n = norm(t);
+      return ART.test(t) || ALIN.test(t) || HEADS.some(h => h.re.test(n)) || ANEXA.test(n);
+    };
+
+    // Conținutul de după un marcaj de articol poate începe cu (1), a) sau 1.
+    function inner(ln, text) {
+      let m;
+      if ((m = text.match(ALIN)) && art) {
+        const n = +m[1];
+        alin = { n, s: m[2] }; lit = null; pct = null;
+        start(ln, text, 'text');
+        return;
+      }
+      start(ln, text, 'text');
+    }
+
+    for (let i = 0; i < stream.length; i++) {
+      const ln = stream[i];
+      const t = ln.text;
+      const n = norm(t);
+      let m;
+
+      // Anexa
+      if (!midSentence() && (m = n.match(ANEXA)) && /^A/.test(t) && t.length <= 120 && (!m[2] || !/^[a-z]/.test(t.slice(t.length - m[2].length)))) {
+        resetBelow(0);
+        let title = m[2] ? t.slice(t.length - m[2].length).trim() : '';
+        if (!title && stream[i + 1] && !isMarkerLine(stream[i + 1].text) && stream[i + 1].text.length < 140 && isUpperLine(stream[i + 1].text)) { title = stream[++i].text; }
+        ctx.anexa = { label: 'Anexa' + (m[1] ? ' nr. ' + m[1].toUpperCase() : ''), title };
+        start(ln, title || ctx.anexa.label, 'head');
+        flush();
+        continue;
+      }
+
+      // Titlu, capitol, secțiune...
+      let head = null;
+      if (t.length <= 140 && /^\p{Lu}/u.test(t) && !midSentence()) {
+        for (const h of HEADS) { if ((m = n.match(h.re))) { head = h; break; } }
+      }
+      if (head) {
+        const restOrig = m[2] ? t.slice(t.length - m[2].length).trim() : '';
+        if (!restOrig || /^\p{Lu}/u.test(restOrig)) {
+          resetBelow(LEVELS.indexOf(head.key));
+          let title = restOrig;
+          if (!title) {
+            const nx = stream[i + 1];
+            if (nx && !isMarkerLine(nx.text) && nx.text.length < 140 && !/[;,]$/.test(nx.text)) {
+              title = nx.text; i++;
+              const nx2 = stream[i + 1];
+              if (isUpperLine(title) && nx2 && isUpperLine(nx2.text) && !isMarkerLine(nx2.text)) { title += ' ' + nx2.text; i++; }
+            }
+          }
+          ctx[head.key] = { label: head.label + ' ' + fmtId(m[1]), title };
+          start(ln, title || ctx[head.key].label, 'head');
+          flush();
+          continue;
+        }
+      }
+
+      // Articol
+      if ((m = t.match(ART)) && (m[3] || !ART_REF.test(norm(m[4] || ''))) && !prevEndsRef()) {
+        const num = m[1] + sup(m[2]);
+        art = { num, title: '' }; alin = lit = pct = null;
+        artCount++;
+        const nn = parseInt(m[1], 10);
+        if (!isNaN(nn)) { artMin = artMin === null ? nn : Math.min(artMin, nn); artMax = artMax === null ? nn : Math.max(artMax, nn); }
+        let rest = (m[4] || '').trim();
+        // titlul articolului: „Articolul 6” urmat de un rând scurt, sau pe același rând
+        const longForm = /^articolul/i.test(t);
+        const nx = stream[i + 1];
+        if (longForm && !rest) {
+          if (nx && !isMarkerLine(nx.text) && !LIT.test(nx.text) && nx.text.length < 100 && !/[.;:,]$/.test(nx.text)) { art.title = nx.text; i++; }
+        } else if (longForm && !/^[-–(]/.test(rest) && rest.length < 90 && !/[.;:,]$/.test(rest) && /^\p{Lu}/u.test(rest) && nx && ALIN.test(nx.text)) {
+          art.title = rest; rest = '';
+        }
+        if (art.title) { start(ln, art.title, 'head'); cur.cite = cite(); cur.artTitle = art.title; flush(); }
+        if (rest) inner(ln, rest);
+        else { start(ln, '', 'text'); }
+        continue;
+      }
+
+      // Alineat
+      if ((m = t.match(ALIN)) && !prevEndsRef()) {
+        const nAl = +m[1];
+        if (!alin || nAl > alin.n || (nAl === alin.n && m[2]) || (!art && nAl === 1)) {
+          alin = { n: nAl, s: m[2] }; lit = null; pct = null;
+          start(ln, t, 'text');
+          continue;
+        }
+      }
+
+      // Literă
+      if ((m = t.match(LIT)) && !prevEndsRef() && (art || alin)) {
+        const code = m[1].charCodeAt(0);
+        if ((!lit && m[1] === 'a') || (lit && (code > lit.l.charCodeAt(0) || (code === lit.l.charCodeAt(0) && m[2])))) {
+          lit = { l: m[1], s: m[2] };
+          start(ln, t, 'text');
+          continue;
+        }
+      }
+
+      // Punct
+      if ((m = t.match(PCT)) && art && !prevEndsRef()) {
+        const np = +m[1];
+        if ((!pct && np === 1) || (pct && (np > pct.n && np <= pct.n + 3 || (np === pct.n && m[2])))) {
+          pct = { n: np, s: m[2] }; lit = null;
+          start(ln, t, 'text');
+          continue;
+        }
+      }
+
+      // Rânduri scrise cu majuscule în afara articolelor = titluri de secțiune libere
+      if (!art && isUpperLine(t) && !/^\d/.test(t)) {
+        resetBelow(LEVELS.indexOf('liber'));
+        ctx.liber = { label: t, title: '' };
+        start(ln, t, 'head');
+        flush();
+        continue;
+      }
+
+      // Text obișnuit: paragraf nou în afara articolelor, la spațiu mare sau text foarte lung
+      if (cur && !art && (ln.brk || (cur.text.length > 2500 && /[.:;]$/.test(cur.text)))) start(ln, '', 'text');
+      else if (cur && art && cur.text.length > 4000 && /[.;]$/.test(cur.text)) { const c = cur.cite; start(ln, '', 'text'); cur.cite = c; }
+      append(ln, t);
+    }
+    flush();
+
+    units.forEach((u, i) => { u.i = i; u.text = u.text.replace(/\s+/g, ' ').trim(); });
+    const title = guessTitle(pages);
+    return { units, title, artCount, artMin, artMax };
+  }
+
+  function guessTitle(pages) {
+    const first = (pages[0] && pages[0].lines || []).slice(0, 25);
+    const re = /^(LEGEA?|LEGE|ORDIN(UL)?|HOT[AĂ]R[AÂ]RE(A)?|ORDONAN[TȚŢ][AĂ]( DE URGEN[TȚŢ][AĂ])?|DECIZI[AE]|DISPOZI[TȚŢ]I[AE]|REGULAMENT(UL)?|NORME|NORMELE|COD(UL)?|DECRET(UL)?)\b/i;
+    for (let i = 0; i < first.length; i++) {
+      const t = first[i].text;
+      if (re.test(t) && /nr\.?\s*\d+/i.test(t) && t.length < 140) return t.replace(/\s+/g, ' ').trim();
+    }
+    return '';
+  }
+
+  /* ---------- 4. Căutare ---------- */
+  function prepareUnit(u) {
+    const { norm: n, map } = normWithMap(u.text);
+    u.n = n; u.map = map;
+    if (u.artTitle) u.nTitle = norm(u.artTitle);
+  }
+
+  function stem(w) {
+    if (w.length < 6 || /\d/.test(w)) return w;
+    const r = w.replace(/(urilor|ilor|iile|elor|ului|uri|iei|ile|ii|ie|ia|ul|ua|lor|le|ea|a|e|i|u)$/, '');
+    return r.length >= 4 ? r : w;
+  }
+
+  function parseQuery(q, mode, doStem) {
+    q = q.replace(/[„“”«»]/g, '"');
+    const cleanWord = (w) => norm(w).replace(/^[^\p{L}\p{N}(]+|[^\p{L}\p{N})]+$/gu, '');
+    if (mode === 'exact') {
+      const p = norm(q.replace(/"/g, '')).replace(/\s+/g, ' ').trim();
+      return { must: p ? [{ t: p, phrase: true }] : [], not: [] };
+    }
+    if (mode === 'similar') {
+      const words = [...new Set(norm(q).split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3).map(stem))];
+      return { words };
+    }
+    const must = [], not = [];
+    const re = /(-?)"([^"]+)"?|(-?)(\S+)/g;
+    let m;
+    while ((m = re.exec(q))) {
+      if (m[2] !== undefined) {
+        const p = norm(m[2]).replace(/\s+/g, ' ').trim();
+        if (p) (m[1] ? not : must).push({ t: p, phrase: true });
+      } else {
+        const neg = m[3] === '-' && m[4].length > 1;
+        const w = cleanWord(m[4]);
+        if (w) (neg ? not : must).push({ t: doStem && !neg ? stem(w) : w, phrase: false, ext: doStem });
+      }
+    }
+    return { must, not };
+  }
+
+  const isWordChar = (c) => c !== undefined && LETTER.test(c);
+  function findAll(n, t, whole, ext) {
+    const res = [];
+    let i = n.indexOf(t);
+    while (i !== -1) {
+      const okStart = !isWordChar(n[i - 1]) || !isWordChar(t[0]);
+      const okEnd = !whole || !isWordChar(n[i + t.length]) || !isWordChar(t[t.length - 1]);
+      if (okStart && okEnd) {
+        let e = i + t.length;
+        if (ext) while (isWordChar(n[e])) e++;
+        res.push([i, e]);
+      }
+      i = n.indexOf(t, i + 1);
+    }
+    return res;
+  }
+
+  function wordSet(u) {
+    if (!u.words) u.words = new Set(u.n.split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3).map(stem));
+    return u.words;
+  }
+
+  // Returnează [{u, score, ranges}]
+  function search(units, q, mode, opts = {}) {
+    const pq = parseQuery(q, mode, opts.stem !== false && !opts.whole);
+    const out = [];
+    if (mode === 'similar') {
+      const W = pq.words;
+      if (W.length < 3) return { results: [], terms: [] };
+      for (const u of units) {
+        if (u.kind === 'head') continue;
+        const ws = wordSet(u);
+        let hit = 0;
+        for (const w of W) if (ws.has(w)) hit++;
+        const ratio = hit / W.length;
+        if (ratio >= (opts.minRatio || 0.6)) {
+          const ranges = [];
+          for (const w of W) if (ws.has(w)) ranges.push(...findAll(u.n, w, false, true));
+          out.push({ u, score: ratio, ratio, ranges });
+        }
+      }
+      out.sort((a, b) => b.score - a.score);
+      return { results: out, terms: W };
+    }
+    if (!pq.must.length) return { results: [], terms: [] };
+    const whole = !!opts.whole;
+    for (const u of units) {
+      let ok = true, score = 0;
+      const ranges = [], firsts = [];
+      for (const term of pq.must) {
+        const r = findAll(u.n, term.t, whole, term.ext);
+        if (!r.length) { ok = false; break; }
+        ranges.push(...r);
+        firsts.push(r.map(x => x[0]));
+        score += 1 + Math.log(1 + r.length) + (term.phrase ? 1.5 : 0);
+      }
+      if (!ok) continue;
+      if (pq.not.some(term => findAll(u.n, term.t, whole).length)) continue;
+      if (firsts.length > 1) {
+        // apropiere: toți termenii într-o fereastră de 120 de caractere
+        const all = firsts.flatMap((arr, k) => arr.map(p => [p, k])).sort((a, b) => a[0] - b[0]);
+        const need = firsts.length;
+        let best = Infinity;
+        const cnt = new Map();
+        let l = 0, have = 0;
+        for (let r = 0; r < all.length; r++) {
+          const k = all[r][1]; cnt.set(k, (cnt.get(k) || 0) + 1); if (cnt.get(k) === 1) have++;
+          while (have === need) {
+            best = Math.min(best, all[r][0] - all[l][0]);
+            const kl = all[l][1]; cnt.set(kl, cnt.get(kl) - 1); if (!cnt.get(kl)) have--; l++;
+          }
+        }
+        if (best < 120) score += 2; else if (best < 400) score += 0.7;
+      }
+      if (u.kind === 'head') score += 1.5;
+      score += 1 / (1 + u.text.length / 600);
+      out.push({ u, score, ranges });
+    }
+    out.sort((a, b) => b.score - a.score);
+    const terms = pq.must.map(t => t.t);
+    return { results: out, terms };
+  }
+
+  // Fragment cu evidențiere; întoarce bucăți {t, hl}
+  function snippet(u, ranges, width = 280) {
+    const text = u.text;
+    const R = ranges.map(([a, b]) => [u.map[a], (u.map[b - 1] ?? text.length - 1) + 1]).sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const r of R) { const l = merged[merged.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else merged.push([...r]); }
+    let s = 0, e = text.length;
+    if (text.length > width) {
+      const f = merged.length ? merged[0][0] : 0;
+      s = Math.max(0, f - Math.floor(width * 0.3));
+      if (s > 0) { const sp = text.indexOf(' ', s); if (sp !== -1 && sp < f) s = sp + 1; }
+      e = Math.min(text.length, s + width);
+      if (e < text.length) { const sp = text.lastIndexOf(' ', e); if (sp > s + width * 0.6) e = sp; }
+    }
+    return { parts: piece(text, merged, s, e), pre: s > 0, post: e < text.length };
+  }
+  function piece(text, merged, s, e) {
+    const parts = [];
+    let pos = s;
+    for (const [a, b] of merged) {
+      if (b <= s || a >= e) continue;
+      const A = Math.max(a, s), Bb = Math.min(b, e);
+      if (A > pos) parts.push({ t: text.slice(pos, A) });
+      parts.push({ t: text.slice(A, Bb), hl: true });
+      pos = Bb;
+    }
+    if (pos < e) parts.push({ t: text.slice(pos, e) });
+    return parts;
+  }
+  function fullParts(u, ranges) {
+    const text = u.text;
+    const R = ranges.map(([a, b]) => [u.map[a], (u.map[b - 1] ?? text.length - 1) + 1]).sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const r of R) { const l = merged[merged.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else merged.push([...r]); }
+    return piece(text, merged, 0, text.length);
+  }
+
+  return { stem, norm, normWithMap, pageLines, buildDoc, prepareUnit, search, snippet, fullParts, findAll, parseQuery };
+})();
+
+
+</script>
+<script>
+(() => {
+'use strict';
+const $ = (s) => document.querySelector(s);
+const app = $('#app');
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const PDFJS_VER = '3.11.174';
+
+if (typeof pdfjsLib === 'undefined') {
+  const b = document.createElement('div');
+  b.className = 'banner';
+  b.textContent = 'Componenta de citire PDF (pdf.js) nu s-a încărcat. Verifică conexiunea la internet și reîncarcă pagina.';
+  app.prepend(b);
+  return;
+}
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/pdf.worker.min.js`;
+
+/* ---------------- Stocare (IndexedDB, cu rezervă în memorie) ---------------- */
+const DB = (() => {
+  let dbp = null, mem = null;
+  function open() {
+    if (dbp) return dbp;
+    dbp = new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open('biblioteca-pdf', 1);
+        r.onupgradeneeded = () => {
+          const d = r.result;
+          d.createObjectStore('docs', { keyPath: 'id' });
+          d.createObjectStore('files');
+          d.createObjectStore('units');
+        };
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+        r.onblocked = () => rej(new Error('blocked'));
+      } catch (e) { rej(e); }
+    }).catch((e) => { mem = { docs: new Map(), files: new Map(), units: new Map() }; return null; });
+    return dbp;
+  }
+  async function tx(store, mode, fn) {
+    const d = await open();
+    if (!d) return fn(null, mem[store]);
+    return new Promise((res, rej) => {
+      const t = d.transaction(store, mode);
+      const r = fn(t.objectStore(store));
+      let out;
+      if (r) r.onsuccess = () => { out = r.result; };
+      t.oncomplete = () => res(out);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
+    });
+  }
+  return {
+    ready: async () => { await open(); return !mem; },
+    all: (st) => tx(st, 'readonly', (s, m) => s ? s.getAll() : [...m.values()]),
+    get: (st, k) => tx(st, 'readonly', (s, m) => s ? s.get(k) : m.get(k)),
+    put: (st, v, k) => tx(st, 'readwrite', (s, m) => s ? (k === undefined ? s.put(v) : s.put(v, k)) : void m.set(k === undefined ? v.id : k, v)),
+    del: (st, k) => tx(st, 'readwrite', (s, m) => s ? s.delete(k) : void m.delete(k)),
+  };
+})();
+
+const pref = {
+  get(k, d) { try { const v = localStorage.getItem('bibpdf.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('bibpdf.' + k, JSON.stringify(v)); } catch {} },
+};
+
+/* ---------------- Stare ---------------- */
+const S = {
+  docs: [],              // metadate
+  units: new Map(),      // docId -> unități
+  enabled: new Set(pref.get('enabled', null) || []),
+  enabledInit: pref.get('enabled', null) !== null,
+  mode: pref.get('mode', 'cuvinte'),
+  results: [], terms: [], hl: [], flat: [], groups: [], shown: new Map(),
+  active: -1, lastQuery: '',
+  folders: pref.get('folders', []), lastSync: pref.get('lastSync', 0), syncing: false, syncMsg: '',
+};
+const docById = (id) => S.docs.find(d => d.id === id);
+
+/* ---------------- Mesaje ---------------- */
+let toastT;
+function toast(msg, ms = 3200) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('on'), ms);
+}
+
+/* ---------------- Biblioteca ---------------- */
+const fmtCount = (n, one, many) => n === 1 ? `1 ${one}` : `${n.toLocaleString('ro-RO')} ${n >= 20 || n === 0 ? 'de ' : ''}${many}`;
+
+function docMeta(d) {
+  if (d.status === 'processing') return d.pages ? `Se citește pagina ${Math.max(1, Math.round(d.progress * d.pages))} din ${d.pages}` : 'Se deschide…';
+  if (d.status === 'queued') return 'În așteptare';
+  if (d.status === 'downloading') return 'Se descarcă din Drive…';
+  const parts = [fmtCount(d.pages, 'pagină', 'pagini')];
+  if (d.artCount) parts.push(d.artMin !== null && d.artMax !== null && d.artMax > d.artMin ? `art. ${d.artMin}–${d.artMax}` : fmtCount(d.artCount, 'articol', 'articole'));
+  else if (d.units) parts.push(fmtCount(d.units, 'fragment', 'fragmente'));
+  return parts.join(', ');
+}
+
+const ICON_DRIVE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4.75 4.75 0 0 1-.5 9.5z"/></svg>`;
+const ICON_PC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>`;
+
+function docItem(d) {
+  const busy = d.status === 'processing' || d.status === 'queued' || d.status === 'downloading';
+  let warn = '';
+  if (d.status === 'error') warn = `<div class="doc-err">${esc(d.error || 'Fișierul nu a putut fi citit.')}</div>`;
+  else if (d.status === 'ready' && d.pages && d.emptyPages === d.pages) warn = `<div class="doc-warn">Document scanat, fără text. Va putea fi căutat după ce adăugăm recunoașterea textului (OCR).</div>`;
+  else if (d.status === 'ready' && d.emptyPages) warn = `<div class="doc-warn">${fmtCount(d.emptyPages, 'pagină', 'pagini')} fără text (scanate), deocamdată necăutabile.</div>`;
+  return `<li class="doc" data-id="${d.id}">
+    <input type="checkbox" ${S.enabled.has(d.id) ? 'checked' : ''} ${d.status !== 'ready' ? 'disabled' : ''} aria-label="Include în căutare">
+    <div>
+      <button class="doc-title" data-act="open" title="Deschide documentul">${esc(d.title)}</button>
+      <div class="doc-meta">${esc(docMeta(d))}</div>
+      ${d.drivePath ? `<div class="doc-meta">în ${esc(d.drivePath)}</div>` : ''}
+      ${busy ? `<div class="bar"><i style="width:${Math.round((d.progress || 0) * 100)}%"></i></div>` : ''}
+      ${warn}
+    </div>
+    <div class="doc-act">
+      ${d.status === 'ready' ? `<button class="btn ghost" data-act="rename" aria-label="Redenumește"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>` : ''}
+      ${!busy && !d.driveId ? `<button class="btn ghost" data-act="delete" aria-label="Șterge din bibliotecă"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>` : ''}
+    </div>
+  </li>`;
+}
+
+function renderLib() {
+  const ul = $('#docList');
+  $('#libTools').hidden = S.docs.length < 2;
+  renderDrive();
+  if (!S.docs.length && !S.folders.length) {
+    ul.innerHTML = `<li class="lib-empty">Biblioteca e goală. Adaugă PDF-uri de pe calculator sau conectează un folder din Google Drive.</li>`;
+    renderStats();
+    return;
+  }
+  const local = S.docs.filter(d => !d.driveId);
+  let html = '';
+  if (local.length) {
+    if (S.folders.length) html += `<li class="src-h">${ICON_PC}<span class="src-name">Pe acest calculator</span><span class="n">${local.length}</span></li>`;
+    html += local.map(docItem).join('');
+  }
+  for (const fo of S.folders) {
+    const ds = S.docs.filter(d => d.driveFolder === fo.id);
+    html += `<li class="src-h" data-folder="${esc(fo.id)}">${ICON_DRIVE}<span class="src-name" title="${esc(fo.name)}">${esc(fo.name)}</span><span class="n">${ds.length}</span>
+      <button class="btn ghost" data-act="rmfolder" aria-label="Scoate folderul din bibliotecă"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></li>`;
+    html += ds.length ? ds.map(docItem).join('') : `<li class="src-empty">${S.syncing ? 'Se verifică folderul…' : 'Niciun PDF încă. Apasă „Sincronizează”.'}</li>`;
+  }
+  ul.innerHTML = html;
+  renderStats();
+}
+
+function renderStats() {
+  const ready = S.docs.filter(d => d.status === 'ready');
+  const units = ready.reduce((a, d) => a + (d.units || 0), 0);
+  $('#stats').textContent = ready.length ? `${fmtCount(ready.length, 'document', 'documente')}, ${fmtCount(units, 'fragment', 'fragmente')} indexate` : '';
+}
+
+function updateProgress(d) {
+  const li = document.querySelector(`.doc[data-id="${d.id}"]`);
+  if (!li) return;
+  const bar = li.querySelector('.bar i');
+  if (bar) bar.style.width = Math.round(d.progress * 100) + '%';
+  const meta = li.querySelector('.doc-meta');
+  if (meta) meta.textContent = docMeta(d);
+}
+
+function saveEnabled() { pref.set('enabled', [...S.enabled]); }
+
+$('#docList').addEventListener('change', (e) => {
+  const li = e.target.closest('.doc');
+  if (!li || e.target.type !== 'checkbox') return;
+  e.target.checked ? S.enabled.add(li.dataset.id) : S.enabled.delete(li.dataset.id);
+  saveEnabled();
+  runSearch();
+});
+$('#selAll').onclick = () => { S.docs.forEach(d => d.status === 'ready' && S.enabled.add(d.id)); saveEnabled(); renderLib(); runSearch(); };
+$('#selNone').onclick = () => { S.enabled.clear(); saveEnabled(); renderLib(); runSearch(); };
+
+$('#docList').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  if (btn.dataset.act === 'rmfolder') {
+    const fid = btn.closest('.src-h').dataset.folder;
+    if (!btn.classList.contains('confirm')) {
+      btn.classList.add('confirm');
+      btn.textContent = 'Scoate folderul';
+      setTimeout(() => { if (btn.isConnected) renderLib(); }, 4000);
+      return;
+    }
+    if (S.syncing) { toast('Așteaptă să se termine sincronizarea.'); return; }
+    const fo = S.folders.find(f => f.id === fid);
+    S.folders = S.folders.filter(f => f.id !== fid);
+    pref.set('folders', S.folders);
+    for (const d of S.docs.filter(x => x.driveFolder === fid)) await removeDoc(d);
+    renderLib(); runSearch();
+    toast(`Folderul „${fo ? fo.name : ''}” a fost scos din bibliotecă. Fișierele din Drive nu au fost atinse.`);
+    return;
+  }
+  const li = btn.closest('.doc');
+  const d = docById(li.dataset.id);
+  if (!d) return;
+  const act = btn.dataset.act;
+  if (act === 'open') {
+    if (d.status !== 'ready') return;
+    closeDrawer();
+    openDocAt(d.id, null);
+  } else if (act === 'rename') {
+    const title = li.querySelector('.doc-title');
+    const inp = document.createElement('input');
+    inp.className = 'doc-rename';
+    inp.value = d.title;
+    inp.setAttribute('aria-label', 'Titlul documentului');
+    title.replaceWith(inp);
+    inp.focus(); inp.select();
+    let done = false;
+    const finish = async (save) => {
+      if (done) return; done = true;
+      const v = inp.value.trim();
+      if (save && v && v !== d.title) {
+        d.title = v; d.customTitle = true;
+        await DB.put('docs', stripDoc(d));
+        renderResults();
+        if (V.docId === d.id) $('#vDoc').textContent = d.title;
+      }
+      renderLib();
+    };
+    inp.addEventListener('keydown', (k) => { if (k.key === 'Enter') finish(true); if (k.key === 'Escape') finish(false); });
+    inp.addEventListener('blur', () => finish(true));
+  } else if (act === 'delete') {
+    if (!btn.classList.contains('confirm')) {
+      btn.classList.add('confirm');
+      btn.textContent = 'Șterge definitiv';
+      setTimeout(() => { if (btn.isConnected) renderLib(); }, 4000);
+      return;
+    }
+    await removeDoc(d);
+    renderLib();
+    runSearch();
+    toast(`„${d.title}” a fost scos din bibliotecă.`);
+  }
+});
+
+const stripDoc = (d) => ({ id: d.id, name: d.name, size: d.size, added: d.added, title: d.title, customTitle: !!d.customTitle, pages: d.pages, emptyPages: d.emptyPages, units: d.units, artCount: d.artCount, artMin: d.artMin, artMax: d.artMax, status: 'ready',
+  driveId: d.driveId, driveFolder: d.driveFolder, drivePath: d.drivePath, driveModified: d.driveModified });
+
+async function removeDoc(d) {
+  S.docs = S.docs.filter(x => x !== d);
+  for (let i = queue.length - 1; i >= 0; i--) if (queue[i].d === d) queue.splice(i, 1);
+  S.units.delete(d.id);
+  S.enabled.delete(d.id); saveEnabled();
+  memFiles.delete(d.id);
+  await Promise.all([DB.del('docs', d.id), DB.del('files', d.id), DB.del('units', d.id)]).catch(() => {});
+  if (V.docId === d.id) closeViewer();
+}
+
+/* ---------------- Adăugarea și procesarea fișierelor ---------------- */
+const queue = [];
+let working = false;
+
+function addFiles(list) {
+  let added = 0;
+  const t0 = Date.now();
+  for (const f of list) {
+    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { toast(`„${f.name}” nu este PDF și a fost ignorat.`); continue; }
+    if (S.docs.some(d => !d.driveId && d.name === f.name && d.size === f.size && d.status !== 'error')) { toast(`„${f.name}” este deja în bibliotecă.`); continue; }
+    const d = { id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), name: f.name, size: f.size, added: t0 + added, title: f.name.replace(/\.pdf$/i, ''), status: 'queued', progress: 0, pages: 0 };
+    S.docs.push(d);
+    queue.push({ d, f });
+    added++;
+  }
+  if (added) { renderLib(); pump(); }
+}
+
+async function pump() {
+  if (working) return;
+  working = true;
+  while (queue.length) {
+    const { d, f } = queue.shift();
+    if (!S.docs.includes(d)) continue;
+    try { await processDoc(d, f); }
+    catch (err) {
+      console.error(err);
+      d.status = 'error';
+      d.error = err && err.name === 'PasswordException' ? 'PDF protejat cu parolă. Deschide-l, salvează o copie fără parolă și adaug-o din nou.' : 'Fișierul nu a putut fi citit. Poate fi deteriorat sau într-un format neobișnuit.';
+      renderLib();
+    }
+  }
+  working = false;
+}
+
+async function processDoc(d, file) {
+  d.status = 'processing';
+  renderLib();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)), isEvalSupported: false }).promise;
+  d.pages = pdf.numPages;
+  const pages = [];
+  let empty = 0, lastUi = 0;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const vp = page.getViewport({ scale: 1 });
+    const tc = await page.getTextContent();
+    const lines = Core.pageLines(tc.items, vp.width, vp.height, (x, y) => vp.convertToViewportPoint(x, y)[1]);
+    const chars = lines.reduce((a, l) => a + l.text.length, 0);
+    if (chars < 20) empty++;
+    pages.push({ lines, h: vp.height });
+    page.cleanup();
+    d.progress = p / pdf.numPages;
+    if (performance.now() - lastUi > 120) { updateProgress(d); lastUi = performance.now(); await new Promise(r => setTimeout(r, 0)); }
+  }
+  pdf.destroy();
+  const r = Core.buildDoc(pages);
+  if (!S.docs.includes(d)) return;
+  if (!d.customTitle) d.title = r.title || d.name.replace(/\.pdf$/i, '');
+  Object.assign(d, { emptyPages: empty, units: r.units.length, artCount: r.artCount, artMin: r.artMin, artMax: r.artMax, status: 'ready', progress: 1 });
+  try {
+    await DB.put('files', file, d.id);
+    await DB.put('units', r.units, d.id);
+    await DB.put('docs', stripDoc(d));
+  } catch (e) {
+    console.error(e);
+    toast('Documentul a fost citit, dar nu a putut fi salvat în browser (spațiu insuficient?). Rămâne disponibil până închizi pagina.', 6000);
+    memFiles.set(d.id, file);
+  }
+  attachUnits(d.id, r.units);
+  S.enabled.add(d.id); saveEnabled();
+  renderLib();
+  if ($('#q').value.trim()) runSearch(); else renderResults();
+}
+const memFiles = new Map();
+
+function attachUnits(id, units) {
+  for (const u of units) { u.doc = id; Core.prepareUnit(u); }
+  S.units.set(id, units);
+}
+
+$('#addBtn').onclick = () => $('#file').click();
+$('#file').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
+
+let dragDepth = 0;
+const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; $('#drop').classList.add('on'); });
+window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#drop').classList.remove('on'); });
+window.addEventListener('drop', (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; $('#drop').classList.remove('on');
+  addFiles([...e.dataTransfer.files]);
+});
+
+/* ---------------- Căutarea ---------------- */
+const qEl = $('#q');
+function setMode(m) {
+  S.mode = m; pref.set('mode', m);
+  document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === m)));
+  const off = m !== 'cuvinte';
+  $('#optStem').disabled = off || $('#optWhole').checked;
+  $('#optWhole').disabled = m === 'similar';
+}
+document.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', () => { setMode(b.dataset.mode); runSearch(); }));
+$('#optWhole').addEventListener('change', () => { setMode(S.mode); pref.set('whole', $('#optWhole').checked); runSearch(); });
+$('#optStem').addEventListener('change', () => { pref.set('stem', $('#optStem').checked); runSearch(); });
+$('#sort').addEventListener('change', () => { pref.set('sort', $('#sort').value); runSearch(); });
+$('#optWhole').checked = pref.get('whole', false);
+$('#optStem').checked = pref.get('stem', true);
+$('#sort').value = pref.get('sort', 'rel');
+setMode(S.mode);
+
+let qT;
+qEl.addEventListener('input', () => { clearTimeout(qT); qT = setTimeout(runSearch, S.mode === 'similar' ? 450 : 220); });
+qEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { clearTimeout(qT); runSearch(); }
+  if (e.key === 'ArrowDown') { const h = document.querySelector('.hit'); if (h) { e.preventDefault(); h.focus(); } }
+});
+$('#go').onclick = () => { clearTimeout(qT); runSearch(); };
+
+function searchOpts() {
+  return { whole: S.mode !== 'similar' && $('#optWhole').checked, stem: S.mode === 'cuvinte' && $('#optStem').checked && !$('#optWhole').checked };
+}
+
+function runSearch() {
+  const q = qEl.value.trim();
+  S.lastQuery = q;
+  S.shown = new Map();
+  S.active = -1;
+  if (!q) { S.results = []; S.hl = []; renderResults(); refreshHighlights(); return; }
+  const units = [];
+  for (const d of S.docs) if (d.status === 'ready' && S.enabled.has(d.id)) { const u = S.units.get(d.id); if (u) units.push(...u); }
+  const opts = searchOpts();
+  const r = Core.search(units, q, S.mode, opts);
+  S.results = r.results;
+  S.terms = r.terms;
+  // termeni de evidențiat în pagină
+  if (S.mode === 'similar') S.hl = [];
+  else {
+    const pq = Core.parseQuery(q, S.mode, opts.stem);
+    const hl = [];
+    for (const t of pq.must) {
+      hl.push({ t: t.t, ext: !!t.ext });
+    }
+    S.hl = hl;
+  }
+  renderResults();
+  refreshHighlights();
+}
+
+function groupResults() {
+  const byDoc = new Map();
+  for (const r of S.results) {
+    if (!byDoc.has(r.u.doc)) byDoc.set(r.u.doc, []);
+    byDoc.get(r.u.doc).push(r);
+  }
+  const order = $('#sort').value;
+  const groups = [...byDoc.entries()].map(([id, items]) => ({ id, items, best: Math.max(...items.map(x => x.score)) }));
+  if (order === 'doc') {
+    groups.sort((a, b) => S.docs.findIndex(d => d.id === a.id) - S.docs.findIndex(d => d.id === b.id));
+    groups.forEach(g => g.items.sort((a, b) => a.u.i - b.u.i));
+  } else groups.sort((a, b) => b.best - a.best);
+  return groups;
+}
+
+function pathLine(u) {
+  if (!u.path || !u.path.length) return '';
+  const parts = u.path.map(p => p.label + (p.title && p.title !== p.label ? ' ' + p.title : ''));
+  return parts.join(' › ');
+}
+function mainLabel(u) {
+  if (u.cite) return { html: esc(u.cite).replace(/\^(\d+)/g, '<sup>$1</sup>') + (u.artTitle ? ` <em>${esc(u.artTitle)}</em>` : ''), text: u.cite };
+  if (u.kind === 'head' && u.path && u.path.length) {
+    const p = u.path[u.path.length - 1];
+    return { html: esc(p.label), text: p.label };
+  }
+  if (u.path && u.path.length) { const p = u.path[u.path.length - 1]; return { html: esc(p.title || p.label), text: p.title || p.label }; }
+  return { html: 'Text', text: '' };
+}
+
+const PER = 40;
+function renderResults() {
+  const box = $('#results'), sum = $('#summary');
+  const q = S.lastQuery;
+  const ready = S.docs.filter(d => d.status === 'ready');
+  S.flat = [];
+  if (!ready.length) {
+    sum.textContent = '';
+    box.innerHTML = `<div class="empty"><h3>Începe cu câteva documente</h3><p>Adaugă PDF-uri în bibliotecă. Fiecare document este citit o singură dată: textul și structura lui (titluri, capitole, articole, alineate, litere) sunt păstrate pentru căutări rapide.</p></div>`;
+    updateHitNav();
+    return;
+  }
+  if (!q) {
+    sum.textContent = '';
+    box.innerHTML = `<div class="empty"><h3>Ce cauți?</h3><p>Căutarea ignoră diacriticele și găsește și formele flexionate (autorizație, autorizația, autorizațiile).</p>
+      <dl>
+        <dt>autorizație construire</dt><dd>fragmentele care conțin ambele cuvinte</dd>
+        <dt>„certificat de urbanism”</dt><dd>expresia exactă, între ghilimele</dd>
+        <dt>drum -comunal</dt><dd>exclude fragmentele care conțin „comunal”</dd>
+        <dt>Paragraf similar</dt><dd>lipești un paragraf și găsești textele asemănătoare, chiar dacă diferă câteva cuvinte</dd>
+      </dl></div>`;
+    updateHitNav();
+    return;
+  }
+  const nEnabled = ready.filter(d => S.enabled.has(d.id)).length;
+  if (!nEnabled) {
+    sum.textContent = '';
+    box.innerHTML = `<div class="empty"><h3>Niciun document selectat</h3><p>Bifează în bibliotecă documentele în care vrei să cauți.</p></div>`;
+    updateHitNav();
+    return;
+  }
+  if (S.mode === 'similar' && S.terms.length < 3) {
+    sum.textContent = '';
+    box.innerHTML = `<div class="empty"><h3>Paragraful e prea scurt</h3><p>Pentru „Paragraf similar” lipește cel puțin o propoziție întreagă. Pentru câteva cuvinte folosește „Toate cuvintele”.</p></div>`;
+    updateHitNav();
+    return;
+  }
+  const groups = groupResults();
+  S.groups = groups;
+  if (!S.results.length) {
+    const words = q.split(/\s+/).length;
+    sum.innerHTML = `Niciun rezultat pentru „${esc(q.length > 60 ? q.slice(0, 60) + '…' : q)}” în ${fmtCount(nEnabled, 'document', 'documente')}.` +
+      (S.mode !== 'similar' && words >= 8 ? ` <button class="btn" id="trySimilar">Încearcă „Paragraf similar”</button>` : '') +
+      (S.mode === 'cuvinte' && $('#optWhole').checked ? ` <button class="btn" id="tryPartial">Caută și părți de cuvânt</button>` : '');
+    box.innerHTML = '';
+    const ts = $('#trySimilar'); if (ts) ts.onclick = () => { setMode('similar'); runSearch(); };
+    const tp = $('#tryPartial'); if (tp) tp.onclick = () => { $('#optWhole').checked = false; setMode(S.mode); runSearch(); };
+    updateHitNav();
+    return;
+  }
+  sum.textContent = `${fmtCount(S.results.length, 'rezultat', 'rezultate')} în ${fmtCount(groups.length, 'document', 'documente')}`;
+  let html = '';
+  for (const g of groups) {
+    const d = docById(g.id);
+    const lim = S.shown.get(g.id) || PER;
+    html += `<div class="group-h"><strong>${esc(d ? d.title : '')}</strong><span>${fmtCount(g.items.length, 'rezultat', 'rezultate')}</span></div>`;
+    g.items.slice(0, lim).forEach((r) => {
+      const k = S.flat.length;
+      S.flat.push(r);
+      html += hitHtml(r, k);
+    });
+    if (g.items.length > lim) html += `<button class="btn more" data-more="${g.id}">Arată încă ${Math.min(PER, g.items.length - lim)} din ${g.items.length - lim}</button>`;
+  }
+  box.innerHTML = html;
+  if (S.active >= S.flat.length) S.active = -1;
+  markActive();
+  updateHitNav();
+}
+
+function hitHtml(r, k) {
+  const u = r.u;
+  const sn = Core.snippet(u, r.ranges, 300);
+  const text = (sn.pre ? '… ' : '') + sn.parts.map(p => p.hl ? `<mark>${esc(p.t)}</mark>` : esc(p.t)).join('') + (sn.post ? ' …' : '');
+  const path = pathLine(u);
+  const lab = mainLabel(u);
+  const pg = u.pageEnd && u.pageEnd !== u.page ? `pag. ${u.page}–${u.pageEnd}` : `pag. ${u.page}`;
+  const score = S.mode === 'similar' ? `<span class="score">${Math.round(r.ratio * 100)}% potrivire</span>` : '';
+  return `<article class="hit" data-k="${k}" tabindex="0" aria-current="false">
+    ${path && (u.cite || u.kind !== 'head') ? `<div class="hit-path">${esc(path)}</div>` : ''}
+    <div class="hit-cite"><span class="cite">${lab.html}</span>${score}<span class="pgno">${pg}</span></div>
+    <p class="hit-text">${text}</p>
+    <div class="hit-act">
+      ${sn.pre || sn.post ? `<button class="btn ghost" data-act="full">Text complet</button>` : ''}
+      <button class="btn ghost" data-act="copy">Copiază cu citare</button>
+    </div>
+  </article>`;
+}
+
+$('#results').addEventListener('click', (e) => {
+  const more = e.target.closest('[data-more]');
+  if (more) {
+    const id = more.dataset.more;
+    S.shown.set(id, (S.shown.get(id) || PER) + PER);
+    const st = $('#results').scrollTop;
+    renderResults();
+    $('#results').scrollTop = st;
+    return;
+  }
+  const hit = e.target.closest('.hit');
+  if (!hit) return;
+  const k = +hit.dataset.k;
+  const act = e.target.closest('[data-act]');
+  if (act && act.dataset.act === 'copy') { copyHit(S.flat[k]); return; }
+  if (act && act.dataset.act === 'full') {
+    const r = S.flat[k];
+    hit.querySelector('.hit-text').innerHTML = Core.fullParts(r.u, r.ranges).map(p => p.hl ? `<mark>${esc(p.t)}</mark>` : esc(p.t)).join('');
+    act.remove();
+    return;
+  }
+  if (window.getSelection && String(window.getSelection()).length > 2) return;
+  openHit(k);
+});
+$('#results').addEventListener('keydown', (e) => {
+  const hit = e.target.closest('.hit');
+  if (!hit) return;
+  if (e.key === 'Enter' && e.target === hit) { e.preventDefault(); openHit(+hit.dataset.k); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const all = [...document.querySelectorAll('.hit')];
+    const i = all.indexOf(hit) + (e.key === 'ArrowDown' ? 1 : -1);
+    if (i < 0) qEl.focus(); else if (all[i]) all[i].focus();
+  }
+});
+
+function citationText(r) {
+  const u = r.u, d = docById(u.doc);
+  const where = u.cite ? u.cite.replace(/^Art\./, 'art.') : (pathLine(u) || `pag. ${u.page}`);
+  return `${d ? d.title : ''}, ${where}:\n„${u.text}”`;
+}
+async function copyHit(r) {
+  const txt = citationText(r);
+  let ok = false;
+  try { await navigator.clipboard.writeText(txt); ok = true; } catch {}
+  if (!ok) {
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand('copy'); } catch {}
+    ta.remove();
+  }
+  toast(ok ? 'Textul a fost copiat, împreună cu citarea.' : 'Browserul nu a permis copierea. Selectează textul manual.');
+}
+
+function markActive() {
+  document.querySelectorAll('.hit[aria-current="true"]').forEach(h => h.setAttribute('aria-current', 'false'));
+  const h = document.querySelector(`.hit[data-k="${S.active}"]`);
+  if (h) h.setAttribute('aria-current', 'true');
+  return h;
+}
+function updateHitNav() {
+  $('#prevHit').disabled = !(S.flat.length && S.active > 0);
+  $('#nextHit').disabled = !(S.flat.length && S.active < S.flat.length - 1);
+}
+$('#prevHit').onclick = () => { if (S.active > 0) openHit(S.active - 1, true); };
+$('#nextHit').onclick = () => { if (S.active < S.flat.length - 1) openHit(S.active + 1, true); };
+
+function openHit(k, fromNav) {
+  const r = S.flat[k];
+  if (!r) return;
+  S.active = k;
+  const h = markActive();
+  if (h && fromNav) h.scrollIntoView({ block: 'nearest' });
+  updateHitNav();
+  openDocAt(r.u.doc, r.u);
+}
+
+/* ---------------- Vizualizatorul ---------------- */
+const V = { docId: null, pdf: null, pages: [], key: 0, zoom: pref.get('zoom', 1), fit: 1, target: null, loading: null };
+const vBody = $('#vBody');
+const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 2.5];
+
+async function getFile(id) {
+  return memFiles.get(id) || await DB.get('files', id);
+}
+
+async function loadDoc(id) {
+  if (V.docId === id && V.pdf) return true;
+  closeViewer(true);
+  V.docId = id;
+  const d = docById(id);
+  $('#vDoc').textContent = d ? d.title : '';
+  vBody.innerHTML = `<div class="v-empty"><div>Se deschide documentul…</div></div>`;
+  const blob = await getFile(id);
+  if (!blob) { vBody.innerHTML = `<div class="v-empty"><div>Fișierul nu mai este în browser. Șterge documentul din bibliotecă și adaugă-l din nou.</div></div>`; return false; }
+  const buf = await blob.arrayBuffer();
+  if (V.docId !== id) return false;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
+  if (V.docId !== id) { pdf.destroy(); return false; }
+  V.pdf = pdf;
+  const sizes = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const pg = await pdf.getPage(p);
+    const vp = pg.getViewport({ scale: 1 });
+    sizes.push({ w: vp.width, h: vp.height });
+  }
+  if (V.docId !== id) return false;
+  V.pages = sizes.map((s, i) => ({ n: i + 1, w: s.w, h: s.h, el: null, rendered: 0, busy: false }));
+  vBody.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const pv of V.pages) {
+    const el = document.createElement('div');
+    el.className = 'pg';
+    el.dataset.n = pv.n;
+    el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`;
+    pv.el = el;
+    frag.appendChild(el);
+  }
+  vBody.appendChild(frag);
+  layout();
+  return true;
+}
+
+function computeFit() {
+  const maxW = Math.max(...V.pages.map(p => p.w));
+  const avail = Math.max(200, vBody.clientWidth - (window.innerWidth < 760 ? 24 : 40));
+  V.fit = avail / maxW;
+}
+function scale() { return V.fit * V.zoom; }
+
+function layout() {
+  if (!V.pages.length) return;
+  computeFit();
+  V.key++;
+  const s = scale();
+  for (const pv of V.pages) {
+    pv.el.style.width = Math.floor(pv.w * s) + 'px';
+    pv.el.style.height = Math.floor(pv.h * s) + 'px';
+    if (pv.rendered) { pv.el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`; pv.rendered = 0; }
+  }
+  $('#zoomVal').textContent = Math.round(V.zoom * 100) + '%';
+  scheduleRender();
+}
+
+let rafR = 0;
+function scheduleRender() { if (!rafR) rafR = requestAnimationFrame(() => { rafR = 0; renderVisible(); }); }
+
+function visibleRange() {
+  const top = vBody.scrollTop, bot = top + vBody.clientHeight;
+  let first = -1, last = -1;
+  for (let i = 0; i < V.pages.length; i++) {
+    const el = V.pages[i].el;
+    const a = el.offsetTop, b = a + el.offsetHeight;
+    if (b >= top && a <= bot) { if (first < 0) first = i; last = i; }
+    else if (first >= 0) break;
+  }
+  return [first, last];
+}
+
+function renderVisible() {
+  if (!V.pdf) return;
+  const [f, l] = visibleRange();
+  if (f < 0) return;
+  for (let i = Math.max(0, f - 1); i <= Math.min(V.pages.length - 1, l + 1); i++) renderPage(V.pages[i]);
+  // eliberează paginile îndepărtate
+  V.pages.forEach((pv, i) => { if (pv.rendered && (i < f - 5 || i > l + 5)) { pv.el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`; pv.rendered = 0; pv.textDivs = null; } });
+  const cur = V.pages[f];
+  $('#vFoot').textContent = `Pagina ${cur.n} din ${V.pages.length}`;
+}
+
+async function renderPage(pv) {
+  if (pv.rendered === V.key || pv.busy === V.key) return;
+  const key = V.key, pdf = V.pdf;
+  pv.busy = key;
+  try {
+    const page = await pdf.getPage(pv.n);
+    if (key !== V.key || pdf !== V.pdf) return;
+    const vp = page.getViewport({ scale: scale() });
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(vp.width * dpr);
+    canvas.height = Math.floor(vp.height * dpr);
+    canvas.style.width = Math.floor(vp.width) + 'px';
+    canvas.style.height = Math.floor(vp.height) + 'px';
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+    if (key !== V.key || pdf !== V.pdf) return;
+    const tl = document.createElement('div');
+    tl.className = 'textLayer';
+    tl.style.setProperty('--scale-factor', vp.scale);
+    const tc = await page.getTextContent();
+    const textDivs = [];
+    await pdfjsLib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs }).promise;
+    if (key !== V.key || pdf !== V.pdf) return;
+    pv.el.innerHTML = '';
+    pv.el.appendChild(canvas);
+    pv.el.appendChild(tl);
+    pv.textDivs = textDivs;
+    pv.rendered = key;
+    highlightPage(pv);
+    drawBand(pv);
+  } catch (e) {
+    if (key === V.key) console.error(e);
+  } finally {
+    if (pv.busy === key) pv.busy = false;
+  }
+}
+
+function highlightPage(pv) {
+  if (!pv.textDivs) return;
+  const opts = searchOpts();
+  for (const sp of pv.textDivs) {
+    if (sp.dataset.raw !== undefined) { sp.textContent = sp.dataset.raw; delete sp.dataset.raw; }
+    if (!S.hl.length || V.target === null) continue;
+    const raw = sp.textContent;
+    if (!raw.trim()) continue;
+    const { norm: n, map } = Core.normWithMap(raw);
+    let R = [];
+    for (const t of S.hl) R.push(...Core.findAll(n, t.t, opts.whole, t.ext));
+    if (!R.length) continue;
+    R = R.map(([a, b]) => [map[a], map[b - 1] + 1]).sort((x, y) => x[0] - y[0]);
+    const merged = [];
+    for (const r of R) { const l = merged[merged.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else merged.push(r); }
+    sp.dataset.raw = raw;
+    sp.textContent = '';
+    let pos = 0;
+    for (const [a, b] of merged) {
+      if (a > pos) sp.appendChild(document.createTextNode(raw.slice(pos, a)));
+      const m = document.createElement('mark');
+      m.textContent = raw.slice(a, b);
+      sp.appendChild(m);
+      pos = b;
+    }
+    if (pos < raw.length) sp.appendChild(document.createTextNode(raw.slice(pos)));
+  }
+}
+
+function drawBand(pv) {
+  pv.el.querySelectorAll('.unit-band').forEach(b => b.remove());
+  const u = V.target;
+  if (!u || u.doc !== V.docId) return;
+  if (pv.n < u.page || pv.n > (u.pageEnd || u.page)) return;
+  const units = S.units.get(u.doc) || [];
+  const next = units[u.i + 1];
+  const H = pv.el.offsetHeight;
+  let top = pv.n === u.page ? u.top * H - 3 : 0.04 * H;
+  let bottom;
+  if (next && next.page === pv.n) bottom = next.top * H - 3;
+  else if (pv.n < (u.pageEnd || u.page)) bottom = H * 0.96;
+  else bottom = next && next.page > pv.n ? H * 0.96 : top + 40;
+  if (bottom - top < 16) bottom = top + 16;
+  const b = document.createElement('div');
+  b.className = 'unit-band';
+  b.style.top = Math.max(0, top) + 'px';
+  b.style.height = Math.min(H - top, bottom - top) + 'px';
+  pv.el.appendChild(b);
+}
+
+function refreshHighlights() {
+  V.pages.forEach(pv => { if (pv.rendered) highlightPage(pv); });
+}
+
+async function openDocAt(id, unit) {
+  if (window.innerWidth < 760) setTab('document');
+  const d = docById(id);
+  V.target = unit;
+  $('#vCite').textContent = unit ? (mainLabel(unit).text || pathLine(unit) || 'Text') + `, pag. ${unit.page}` : 'Răsfoire document';
+  const ok = await loadDoc(id);
+  if (!ok || V.docId !== id) return;
+  $('#vDoc').textContent = d ? d.title : '';
+  V.pages.forEach(pv => { if (pv.rendered) { drawBand(pv); highlightPage(pv); } });
+  const pageN = unit ? unit.page : 1;
+  const pv = V.pages[pageN - 1];
+  if (!pv) return;
+  const y = pv.el.offsetTop + (unit ? unit.top * pv.el.offsetHeight : 0) - 70;
+  const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches && Math.abs(vBody.scrollTop - y) < vBody.clientHeight * 3;
+  vBody.scrollTo({ top: Math.max(0, y), behavior: smooth ? 'smooth' : 'auto' });
+  scheduleRender();
+}
+
+function closeViewer(keepEmpty) {
+  if (V.pdf) { try { V.pdf.destroy(); } catch {} }
+  V.pdf = null; V.pages = []; V.docId = null; V.key++;
+  if (!keepEmpty) {
+    vBody.innerHTML = `<div class="v-empty"><div><div class="big">§</div>Alege un rezultat ca să vezi pagina din document,<br>cu textul găsit evidențiat.</div></div>`;
+    $('#vDoc').textContent = 'Niciun document deschis';
+    $('#vCite').textContent = '';
+    $('#vFoot').innerHTML = '&nbsp;';
+  }
+}
+
+vBody.addEventListener('scroll', scheduleRender, { passive: true });
+function setZoom(z) {
+  if (!V.pages.length) { V.zoom = z; $('#zoomVal').textContent = Math.round(z * 100) + '%'; pref.set('zoom', z); return; }
+  // păstrează poziția relativă
+  const [f] = visibleRange();
+  const el = V.pages[Math.max(0, f)].el;
+  const frac = (vBody.scrollTop - el.offsetTop) / el.offsetHeight;
+  V.zoom = z; pref.set('zoom', z);
+  layout();
+  vBody.scrollTop = el.offsetTop + frac * el.offsetHeight;
+  V.pages.forEach(pv => drawBand(pv));
+}
+$('#zoomIn').onclick = () => { const i = ZOOMS.findIndex(z => z > V.zoom + 0.001); if (i >= 0) setZoom(ZOOMS[i]); };
+$('#zoomOut').onclick = () => { const c = ZOOMS.filter(z => z < V.zoom - 0.001); if (c.length) setZoom(c[c.length - 1]); };
+$('#zoomVal').textContent = Math.round(V.zoom * 100) + '%';
+let rzT;
+window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { if (V.pages.length) { const old = V.fit; computeFit(); if (Math.abs(old - V.fit) / old > 0.03) setZoom(V.zoom); } }, 200); });
+
+/* ---------------- Navigare (telefon, sertar) ---------------- */
+function setTab(t) {
+  app.dataset.tab = t;
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  if (t === 'document') setTimeout(() => { if (V.pages.length) { const old = V.fit; computeFit(); if (Math.abs(old - V.fit) / old > 0.03) setZoom(V.zoom); else scheduleRender(); } }, 0);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+$('#vBack').onclick = () => setTab('cautare');
+function closeDrawer() { app.classList.remove('lib-open'); $('#libToggle').setAttribute('aria-expanded', 'false'); }
+$('#libToggle').onclick = () => { const o = app.classList.toggle('lib-open'); $('#libToggle').setAttribute('aria-expanded', String(o)); };
+$('#scrim').onclick = closeDrawer;
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeDrawer();
+  if (e.key === '/' && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); if (window.innerWidth < 760) setTab('cautare'); qEl.focus(); }
+});
+
+/* ---------------- Google Drive ---------------- */
+const DRIVE = {
+  CLIENT_ID: '124544285192-hoqagffbh091d3bd4allkt7uhbr698i5.apps.googleusercontent.com',
+  SCOPE: 'https://www.googleapis.com/auth/drive.readonly',
+  API: 'https://www.googleapis.com/drive/v3/',
+};
+const GD = {
+  token: null, exp: 0, tc: null, loaded: null,
+  load() {
+    if (!this.loaded) {
+      this.loaded = new Promise((res, rej) => {
+        if (window.google && google.accounts && google.accounts.oauth2) return res();
+        const sc = document.createElement('script');
+        sc.src = 'https://accounts.google.com/gsi/client';
+        sc.async = true;
+        sc.onload = () => (window.google && google.accounts && google.accounts.oauth2) ? res() : rej(new Error('gsi'));
+        sc.onerror = () => rej(new Error('gsi'));
+        document.head.appendChild(sc);
+      });
+      this.loaded.catch(() => { this.loaded = null; });
+    }
+    return this.loaded;
+  },
+  async auth() {
+    if (this.token && Date.now() < this.exp - 60000) return this.token;
+    try { await this.load(); } catch (e) { const er = new Error('gsi'); er.code = 'gsi'; throw er; }
+    return new Promise((res, rej) => {
+      if (!this.tc) this.tc = google.accounts.oauth2.initTokenClient({ client_id: DRIVE.CLIENT_ID, scope: DRIVE.SCOPE, callback: () => {} });
+      this.tc.callback = (r) => {
+        if (r.error) { const er = new Error(r.error); er.code = r.error; rej(er); return; }
+        this.token = r.access_token;
+        this.exp = Date.now() + (+r.expires_in || 3600) * 1000;
+        pref.set('driveOk', true);
+        res(this.token);
+      };
+      this.tc.error_callback = (e) => { const er = new Error(e && e.type || 'popup'); er.code = e && e.type || 'popup'; rej(er); };
+      this.tc.requestAccessToken({ prompt: pref.get('driveOk', false) ? '' : 'consent' });
+    });
+  },
+  async call(path, params = {}, asBlob = false) {
+    const url = new URL(DRIVE.API + path);
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) url.searchParams.set(k, v);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const tok = await this.auth();
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
+      if (r.status === 401 && attempt === 0) { this.token = null; continue; }
+      if (!r.ok) {
+        let msg = '';
+        try { msg = (await r.json()).error.message; } catch {}
+        const er = new Error(msg || 'HTTP ' + r.status); er.status = r.status; throw er;
+      }
+      return asBlob ? r.blob() : r.json();
+    }
+  },
+};
+
+function driveErrorText(e) {
+  const c = e && (e.code || '');
+  if (c === 'gsi') return 'Conectarea la Google nu se poate încărca aici. Google Drive funcționează doar din versiunea aplicației găzduită pe GitHub Pages, la adresa înregistrată în Google Cloud.';
+  if (c === 'popup_closed') return 'Conectarea la Google a fost anulată.';
+  if (c === 'popup_failed_to_open') return 'Browserul a blocat fereastra de conectare Google. Permite ferestrele pop-up pentru această pagină și încearcă din nou.';
+  if (c === 'access_denied') return 'Accesul la Drive nu a fost acordat.';
+  if (e && e.status === 404) return 'Folderul nu mai există sau nu ai acces la el.';
+  if (e && e.status === 403) return 'Google a refuzat cererea (acces sau limită de cereri). Încearcă din nou peste câteva minute.';
+  if (e && e instanceof TypeError) return 'Nu există conexiune la Google Drive. Verifică internetul.';
+  return 'Eroare Google Drive: ' + (e && e.message || 'necunoscută') + '.';
+}
+
+const FOLDER = 'application/vnd.google-apps.folder', SHORTCUT = 'application/vnd.google-apps.shortcut';
+async function listAll(q, fields) {
+  const out = [];
+  let pageToken;
+  do {
+    const r = await GD.call('files', { q, fields: 'nextPageToken,' + fields, pageSize: 1000, pageToken, supportsAllDrives: true, includeItemsFromAllDrives: true });
+    out.push(...(r.files || []));
+    pageToken = r.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+const resolveItem = (x) => (x.mimeType === SHORTCUT && x.shortcutDetails) ? { ...x, id: x.shortcutDetails.targetId, mimeType: x.shortcutDetails.targetMimeType } : x;
+
+async function listPdfsRecursive(rootId) {
+  const out = [], seen = new Set(), stack = [{ id: rootId, path: '' }];
+  while (stack.length) {
+    const f = stack.pop();
+    if (seen.has(f.id)) continue;
+    seen.add(f.id);
+    S.syncMsg = `Se verifică ${f.path ? '„' + f.path + '”' : 'folderul'}…`;
+    renderDrive();
+    const items = await listAll(`'${f.id}' in parents and trashed=false`, 'files(id,name,mimeType,size,modifiedTime,shortcutDetails)');
+    for (const raw of items) {
+      const x = resolveItem(raw);
+      if (x.mimeType === FOLDER) stack.push({ id: x.id, path: f.path ? f.path + ' / ' + x.name : x.name });
+      else if (x.mimeType === 'application/pdf' || /\.pdf$/i.test(x.name || '')) out.push({ id: x.id, name: x.name, size: +x.size || 0, modified: raw.modifiedTime || '', path: f.path });
+    }
+  }
+  return out;
+}
+
+function fmtWhen(t) {
+  const d = new Date(t), now = new Date();
+  const hm = d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return 'azi la ' + hm;
+  return 'pe ' + d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' }) + ', ' + hm;
+}
+
+function renderDrive() {
+  const has = S.folders.length > 0;
+  $('#driveSync').hidden = !has;
+  $('#driveAddLabel').textContent = has ? 'Adaugă folder' : 'Conectează un folder';
+  $('#driveSync').disabled = S.syncing;
+  $('#driveAdd').disabled = S.syncing;
+  let st = '';
+  if (S.syncing) st = S.syncMsg || 'Se sincronizează…';
+  else if (has) st = S.lastSync ? 'Sincronizat ' + fmtWhen(S.lastSync) : 'Nesincronizat încă';
+  $('#driveStatus').textContent = st;
+}
+
+function showDriveNote(msg) {
+  const n = $('#driveNote');
+  n.textContent = msg || '';
+  n.hidden = !msg;
+}
+
+async function syncDrive() {
+  if (S.syncing || !S.folders.length) return;
+  S.syncing = true; S.syncMsg = 'Se conectează…'; showDriveNote('');
+  renderLib();
+  let added = 0, changed = 0, removed = 0;
+  try {
+    await GD.auth();
+    const remote = new Map();
+    const okFolders = new Set();
+    for (const fo of S.folders) {
+      try {
+        const files = await listPdfsRecursive(fo.id);
+        okFolders.add(fo.id);
+        for (const f of files) if (!remote.has(f.id)) remote.set(f.id, { ...f, folder: fo.id });
+      } catch (e) {
+        if (e.code) throw e;
+        showDriveNote(`„${fo.name}”: ${driveErrorText(e)}`);
+      }
+    }
+    // dispărute din Drive (doar din folderele verificate cu succes)
+    for (const d of S.docs.filter(x => x.driveId && okFolders.has(x.driveFolder) && !remote.has(x.driveId))) { await removeDoc(d); removed++; }
+    const todo = [];
+    let seq = 0;
+    for (const f of remote.values()) {
+      let d = S.docs.find(x => x.driveId === f.id);
+      if (!d) {
+        d = { id: 'g' + f.id, name: f.name, size: f.size, added: Date.now() + seq++, title: f.name.replace(/\.pdf$/i, ''), status: 'queued', progress: 0, pages: 0, driveId: f.id };
+        S.docs.push(d);
+        todo.push({ d, f }); added++;
+      } else if (d.driveModified !== f.modified || d.status === 'error') {
+        d.status = 'queued'; d.progress = 0; d.name = f.name; d.size = f.size;
+        if (!d.customTitle) d.title = f.name.replace(/\.pdf$/i, '');
+        todo.push({ d, f }); changed++;
+      }
+      d.driveFolder = f.folder; d.drivePath = f.path;
+    }
+    renderLib();
+    for (let i = 0; i < todo.length; i++) {
+      const { d, f } = todo[i];
+      if (!S.docs.includes(d)) continue;
+      S.syncMsg = `Se descarcă ${i + 1} din ${todo.length}…`;
+      d.status = 'downloading';
+      renderLib();
+      try {
+        const blob = await GD.call('files/' + encodeURIComponent(f.id), { alt: 'media', supportsAllDrives: true }, true);
+        d.driveModified = f.modified;
+        d.status = 'queued';
+        queue.push({ d, f: blob });
+        pump();
+      } catch (e) {
+        if (e.code) throw e;
+        d.status = 'error';
+        d.error = 'Nu s-a putut descărca din Drive. ' + driveErrorText(e);
+      }
+    }
+    S.lastSync = Date.now(); pref.set('lastSync', S.lastSync);
+    const parts = [];
+    if (added) parts.push(fmtCount(added, 'document nou', 'documente noi'));
+    if (changed) parts.push(fmtCount(changed, 'document actualizat', 'documente actualizate'));
+    if (removed) parts.push(fmtCount(removed, 'document scos', 'documente scoase') + ' (nu mai sunt în Drive)');
+    toast(parts.length ? 'Drive: ' + parts.join(', ') + '.' : 'Drive: totul este la zi.');
+  } catch (e) {
+    console.error(e);
+    showDriveNote(driveErrorText(e));
+    for (const d of S.docs) if (d.driveId && (d.status === 'queued' || d.status === 'downloading') && !queue.some(q => q.d === d)) {
+      if (d.pages) d.status = 'ready'; else { d.status = 'error'; d.error = 'Sincronizarea s-a întrerupt. Apasă „Sincronizează” din nou.'; }
+    }
+  } finally {
+    S.syncing = false; S.syncMsg = '';
+    renderLib();
+    runSearch();
+  }
+}
+
+/* Alegerea unui folder */
+const PK = { stack: [], mode: 'root', reqId: 0 };
+async function openPicker() {
+  showDriveNote('');
+  try { await GD.auth(); }
+  catch (e) { showDriveNote(driveErrorText(e)); return; }
+  $('#picker').hidden = false;
+  pkGoRoot('root');
+}
+function closePicker() { $('#picker').hidden = true; PK.reqId++; }
+function pkGoRoot(mode) {
+  PK.mode = mode;
+  PK.stack = [mode === 'root' ? { id: 'root', name: 'Drive-ul meu' } : { id: null, name: 'Partajate cu mine' }];
+  document.querySelectorAll('.pk-tabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.root === mode)));
+  pkLoad();
+}
+async function pkLoad() {
+  const cur = PK.stack[PK.stack.length - 1];
+  const req = ++PK.reqId;
+  const list = $('#pkList');
+  list.innerHTML = `<li class="pk-msg">Se încarcă…</li>`;
+  $('#pkCrumbs').innerHTML = PK.stack.map((c, i) => i === PK.stack.length - 1 ? `<span aria-current="page">${esc(c.name)}</span>` : `<button data-i="${i}">${esc(c.name)}</button>`).join('<span class="sl">/</span>');
+  const canChoose = cur.id && cur.id !== 'root';
+  $('#pkChoose').disabled = true;
+  $('#pkChoose').textContent = canChoose ? `Adaugă „${cur.name.length > 28 ? cur.name.slice(0, 28) + '…' : cur.name}”` : 'Adaugă folderul';
+  $('#pkInfo').textContent = '';
+  try {
+    const q = cur.id === null
+      ? `sharedWithMe=true and trashed=false and mimeType='${FOLDER}'`
+      : `'${cur.id}' in parents and trashed=false and (mimeType='${FOLDER}' or mimeType='application/pdf' or mimeType='${SHORTCUT}')`;
+    const items = (await listAll(q, 'files(id,name,mimeType,shortcutDetails)')).map(resolveItem);
+    if (req !== PK.reqId) return;
+    const coll = new Intl.Collator('ro', { sensitivity: 'base', numeric: true });
+    const folders = items.filter(x => x.mimeType === FOLDER).sort((a, b) => coll.compare(a.name, b.name));
+    const pdfs = items.filter(x => x.mimeType === 'application/pdf').sort((a, b) => coll.compare(a.name, b.name));
+    let html = folders.map(f => `<li><button class="pk-folder" data-id="${esc(f.id)}" data-name="${esc(f.name)}">${ICON_FOLDER}<span>${esc(f.name)}</span></button></li>`).join('');
+    html += pdfs.slice(0, 40).map(f => `<li class="pk-file">${ICON_FILE}<span>${esc(f.name)}</span></li>`).join('');
+    if (pdfs.length > 40) html += `<li class="pk-msg">și încă ${pdfs.length - 40} PDF-uri</li>`;
+    if (!html) html = `<li class="pk-msg">${cur.id === null ? 'Nimeni nu ți-a partajat foldere.' : 'Folderul nu conține subfoldere sau PDF-uri.'}</li>`;
+    list.innerHTML = html;
+    if (canChoose) {
+      $('#pkChoose').disabled = false;
+      $('#pkInfo').textContent = `${fmtCount(pdfs.length, 'PDF', 'PDF-uri')} aici${folders.length ? `, plus ce e în ${fmtCount(folders.length, 'subfolder', 'subfoldere')}` : ''}`;
+    } else $('#pkInfo').textContent = 'Deschide folderul pe care vrei să-l adaugi.';
+  } catch (e) {
+    if (req !== PK.reqId) return;
+    list.innerHTML = `<li class="pk-msg err">${esc(driveErrorText(e))}</li>`;
+  }
+}
+const ICON_FOLDER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>`;
+const ICON_FILE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>`;
+
+$('#pkList').addEventListener('click', (e) => {
+  const b = e.target.closest('.pk-folder');
+  if (!b) return;
+  PK.stack.push({ id: b.dataset.id, name: b.dataset.name });
+  pkLoad();
+});
+$('#pkCrumbs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-i]');
+  if (!b) return;
+  PK.stack = PK.stack.slice(0, +b.dataset.i + 1);
+  pkLoad();
+});
+document.querySelectorAll('.pk-tabs button').forEach(b => b.addEventListener('click', () => pkGoRoot(b.dataset.root)));
+$('#pkClose').onclick = closePicker;
+$('#pkCancel').onclick = closePicker;
+$('#picker').addEventListener('click', (e) => { if (e.target.id === 'picker') closePicker(); });
+$('#picker').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePicker(); } });
+async function pkOpenLink() {
+  const v = $('#pkUrl').value.trim();
+  if (!v) return;
+  const m = v.match(/folders\/([A-Za-z0-9_-]{10,})/) || v.match(/[?&]id=([A-Za-z0-9_-]{10,})/) || v.match(/^([A-Za-z0-9_-]{15,})$/);
+  if (!m) { $('#pkInfo').textContent = 'Linkul nu pare să fie al unui folder Google Drive.'; return; }
+  try {
+    const f = await GD.call('files/' + m[1], { fields: 'id,name,mimeType', supportsAllDrives: true });
+    if (f.mimeType !== FOLDER) { $('#pkInfo').textContent = 'Linkul este al unui fișier, nu al unui folder.'; return; }
+    PK.stack = [{ id: f.id, name: f.name }];
+    document.querySelectorAll('.pk-tabs button').forEach(b => b.setAttribute('aria-pressed', 'false'));
+    $('#pkUrl').value = '';
+    pkLoad();
+  } catch (e) { $('#pkInfo').textContent = driveErrorText(e); }
+}
+$('#pkUrlGo').onclick = pkOpenLink;
+$('#pkUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') pkOpenLink(); });
+$('#pkChoose').onclick = () => {
+  const cur = PK.stack[PK.stack.length - 1];
+  if (!cur.id || cur.id === 'root') return;
+  if (S.folders.some(f => f.id === cur.id)) { toast(`„${cur.name}” este deja în bibliotecă.`); closePicker(); return; }
+  S.folders.push({ id: cur.id, name: cur.name });
+  pref.set('folders', S.folders);
+  closePicker();
+  renderLib();
+  syncDrive();
+};
+$('#driveAdd').onclick = openPicker;
+$('#driveSync').onclick = syncDrive;
+
+/* ---------------- Pornire ---------------- */
+(async () => {
+  const persistent = await DB.ready();
+  if (!persistent) toast('Browserul nu permite salvarea locală. Documentele vor rămâne doar până închizi pagina.', 7000);
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch {}
+  let docs = [];
+  try { docs = await DB.all('docs'); } catch (e) { console.error(e); }
+  docs.sort((a, b) => a.added - b.added);
+  S.docs = docs;
+  if (!S.enabledInit) docs.forEach(d => S.enabled.add(d.id));
+  for (const d of docs) {
+    try { const units = await DB.get('units', d.id); attachUnits(d.id, units || []); } catch (e) { console.error(e); }
+  }
+  // documentele rămase neterminate la ultima închidere
+  for (const d of docs) if (d.status !== 'ready') d.status = 'error';
+  renderLib();
+  if (S.folders.length) GD.load().catch(() => showDriveNote(driveErrorText({ code: 'gsi' })));
+  if (!docs.length && !S.folders.length && window.innerWidth < 760) setTab('lib');
+  runSearch();
+})();
+})();
+
+</script>
+</body>
+</html>
