@@ -158,6 +158,40 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padd
 .zoomval { font-size: 12.5px; color: var(--muted); min-width: 42px; text-align: center; }
 .vback { display: none; }
 .v-body { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 14px 18px 40px; overscroll-behavior: contain; }
+.v-split { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; --xr: .45; }
+.v-split[data-dir="row"] { flex-direction: row; }
+.v-split > .v-body { flex: 1 1 0; }
+.v-split.has-x > .xpane { flex: 0 0 calc(var(--xr) * 100%); }
+.xdiv { flex: none; position: relative; background: var(--rule); touch-action: none; }
+.v-split[data-dir="col"] > .xdiv { height: 7px; cursor: row-resize; }
+.v-split[data-dir="row"] > .xdiv { width: 7px; cursor: col-resize; }
+.xdiv::after { content: ""; position: absolute; left: 50%; top: 50%; translate: -50% -50%; border-radius: 2px; background: var(--muted); opacity: .6; }
+.v-split[data-dir="col"] > .xdiv::after { width: 36px; height: 3px; }
+.v-split[data-dir="row"] > .xdiv::after { width: 3px; height: 36px; }
+.xpane { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--paper); }
+.x-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--rule); }
+.x-title { flex: 1; min-width: 0; }
+.x-doc { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x-cite { font: 600 15px/1.3 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x-cite sup { font-size: .68em; line-height: 0; }
+.x-head .btn:not(.icon) { min-height: 30px; padding: 0 9px; font-size: 13px; color: var(--stamp); }
+.x-body { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 30px; overscroll-behavior: contain; }
+.xdoc { max-width: 72ch; margin: 0 auto; font: 15px/1.65 var(--serif); }
+.xdoc .td-p { margin: 0 0 .7em; padding: 2px 6px; border-radius: 4px; }
+.xdoc .td-h { margin: 0 0 .6em; padding: 2px 6px; font: 600 1.02em/1.4 var(--serif); }
+.xdoc .td-h span { color: var(--muted); font-weight: 400; }
+.xdoc .cur { background: var(--stamp-soft); box-shadow: -5px 0 0 var(--stamp); }
+a.xref { color: var(--stamp); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; cursor: pointer; }
+a.xref:hover { text-decoration-thickness: 2px; }
+.textLayer a.xref { color: transparent; text-decoration: none; border-bottom: 1.5px solid rgba(74,63,160,.75); background: rgba(74,63,160,.07); pointer-events: auto; cursor: pointer; }
+.textLayer a.xref:hover { background: rgba(74,63,160,.16); }
+.v-body { touch-action: pan-x pan-y; }
+.v-body.hand { cursor: grab; }
+.v-body.hand .textLayer span, .v-body.hand .ocrLayer span { pointer-events: none; }
+.v-body.hand .textLayer a.xref { pointer-events: auto; }
+.v-body.dragging, .v-body.dragging * { cursor: grabbing !important; user-select: none; }
+#handBtn[aria-pressed="true"] { color: var(--stamp); }
+.pages { width: max-content; min-width: 100%; }
 .v-foot { padding: 5px 14px; font-size: 12.5px; color: var(--muted); background: var(--surface); border-top: 1px solid var(--rule); text-align: center; }
 .v-empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); padding: 20px; }
 .v-empty .big { font: 400 64px/1 var(--serif); color: var(--rule); margin-bottom: 8px; }
@@ -345,13 +379,26 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padd
         <button class="btn ghost icon" id="prevHit" aria-label="Rezultatul anterior" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
         <button class="btn ghost icon" id="nextHit" aria-label="Rezultatul următor" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
         <span class="sep"></span>
+        <button class="btn ghost icon" id="handBtn" aria-pressed="true"></button>
         <button class="btn ghost icon" id="zoomOut" aria-label="Micșorează"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
         <span class="zoomval" id="zoomVal">100%</span>
         <button class="btn ghost icon" id="zoomIn" aria-label="Mărește"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button>
       </div>
     </div>
-    <div class="v-body" id="vBody">
-      <div class="v-empty"><div><div class="big">§</div>Alege un rezultat ca să vezi pagina din document,<br>cu textul găsit evidențiat.</div></div>
+    <div class="v-split" id="vSplit" data-dir="col">
+      <div class="v-body" id="vBody">
+        <div class="v-empty"><div><div class="big">§</div>Alege un rezultat ca să vezi pagina din document,<br>cu textul găsit evidențiat.</div></div>
+      </div>
+      <div class="xdiv" id="xDiv" hidden role="separator" aria-label="Redimensionează panoul de trimiteri"></div>
+      <section class="xpane" id="xPane" hidden aria-label="Articol trimis">
+        <div class="x-head">
+          <button class="btn ghost icon" id="xBack" hidden aria-label="Trimiterea anterioară"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
+          <div class="x-title"><div class="x-doc" id="xDoc"></div><div class="x-cite" id="xCite"></div></div>
+          <button class="btn ghost" id="xOpen" title="Deschide pagina în vizualizatorul principal">Vezi în document</button>
+          <button class="btn ghost icon" id="xClose" aria-label="Închide panoul"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <div class="x-body" id="xBody"></div>
+      </section>
     </div>
     <div class="v-foot" id="vFoot">&nbsp;</div>
   </section>
@@ -1743,10 +1790,173 @@ function openHit(k, fromNav) {
   openDocAt(r.u.doc, r.u);
 }
 
+/* ---------------- Trimiteri între articole ---------------- */
+const REF_RE = /(?<![\p{L}\p{N}])(art\.|articolul(?:ui)?|articolele)\s*(\d+)(?:\s*\^\s*(\d+))?(?:\s*,?\s*(?:alin\.|alineatul(?:ui)?)\s*\((\d+)\))?(?:\s*,?\s*(?:lit\.|litera)\s*([a-z])\))?(?:\s+din\s+(prezent(?:a|ul)\s+\p{L}+|(?:legea|lege|hot[aă]r[aâ]rea|hg|ordonan[tțţ]a(?:\s+de\s+urgen[tțţ][aă])?|oug|ordinul|decizia|regulamentul|codul)\b[^;:()]{0,70}?nr\.?\s*(\d+)\s*(?:\/|din)\s*(?:[\d.]+\s*)?(?:\p{L}+\s*)?(\d{4})))?/giu;
+
+function findRefs(text, skipHeading) {
+  const out = [];
+  REF_RE.lastIndex = 0;
+  let m;
+  while ((m = REF_RE.exec(text))) {
+    if (skipHeading && /^\s*$/.test(text.slice(0, m.index)) && /^A/.test(m[0]) && /^\s*(\.?\s*[-–—]|$|\.?\s*\(1\))/.test(text.slice(m.index + m[0].length))) continue;
+    const ref = { art: m[2] };
+    if (m[3]) ref.sup = m[3];
+    if (m[4]) ref.alin = m[4];
+    if (m[5]) ref.lit = m[5];
+    if (m[6]) {
+      if (/^prezent/i.test(m[6])) ref.self = 1;
+      else { ref.nr = m[7]; ref.year = m[8]; ref.label = m[6].replace(/\s+/g, ' ').trim(); }
+    }
+    out.push({ start: m.index, end: m.index + m[0].length, ref });
+  }
+  return out;
+}
+
+function richHTML(text, marks, links) {
+  const n = text.length;
+  if (!marks.length && !links.length) return esc(text);
+  const hl = new Uint8Array(n);
+  for (const [a, b] of marks) for (let i = Math.max(0, a); i < b && i < n; i++) hl[i] = 1;
+  const lk = new Int32Array(n).fill(-1);
+  links.forEach((l, k) => { for (let i = l.start; i < l.end && i < n; i++) lk[i] = k; });
+  let out = '', i = 0;
+  while (i < n) {
+    const L = lk[i];
+    let j = i;
+    while (j < n && lk[j] === L) j++;
+    let inner = '', k = i;
+    while (k < j) {
+      const h = hl[k];
+      let q = k;
+      while (q < j && hl[q] === h) q++;
+      const t = esc(text.slice(k, q));
+      inner += h ? `<mark>${t}</mark>` : t;
+      k = q;
+    }
+    out += L >= 0 ? `<a class="xref" href="#" data-ref="${esc(JSON.stringify(links[L].ref))}" title="Deschide articolul">${inner}</a>` : inner;
+    i = j;
+  }
+  return out;
+}
+const origRanges = (u, R) => R.map(([a, b]) => [u.map[a], (u.map[b - 1] ?? u.text.length - 1) + 1]);
+
+const anexaOf = (u) => { const p = u && u.path && u.path.find(x => /^Anexa/.test(x.label)); return p ? p.label : null; };
+function actMatches(d, nr, year) {
+  const t = Core.norm((d.title || '') + ' ' + (d.name || ''));
+  return new RegExp(`nr\\.?\\s*${nr}(?!\\d)`).test(t) && t.includes(year) || new RegExp(`(^|\\D)${nr}\\D{1,3}${year}(\\D|$)`).test(t);
+}
+function resolveRef(ref, srcDocId, srcAnexa) {
+  let docId = srcDocId;
+  if (ref.nr && !ref.self) {
+    const d = S.docs.find(x => x.status === 'ready' && actMatches(x, ref.nr, ref.year));
+    if (!d) return { missing: ref.label || `actul nr. ${ref.nr}/${ref.year}` };
+    if (d.id !== srcDocId) { docId = d.id; srcAnexa = null; }
+  }
+  const units = S.units.get(docId) || [];
+  const key = 'Art. ' + ref.art + (ref.sup ? '^' + ref.sup : '');
+  const runs = [];
+  let cur = null;
+  units.forEach((u, i) => {
+    if (!(u.cite && (u.cite === key || u.cite.startsWith(key + ' ')))) return;
+    if (cur && cur.last === i - 1) { cur.units.push(u); cur.last = i; }
+    else { cur = { units: [u], last: i }; runs.push(cur); }
+  });
+  const d = docById(docId);
+  if (!runs.length) return { notFound: `${key.replace('Art.', 'Art.')} nu a fost găsit în „${d ? d.title : ''}”.` };
+  const run = runs.find(r => anexaOf(r.units[0]) === srcAnexa) || runs.find(r => !anexaOf(r.units[0])) || runs[0];
+  let target = null;
+  if (ref.alin) target = run.units.find(u => u.cite.includes(`alin. (${ref.alin})`) && (!ref.lit || u.cite.includes(`lit. ${ref.lit})`)));
+  if (!target && ref.lit) target = run.units.find(u => u.cite.includes(`lit. ${ref.lit})`));
+  if (!target) target = run.units.find(u => u.kind !== 'head') || run.units[0];
+  let cite = key + (ref.alin ? ` alin. (${ref.alin})` : '') + (ref.lit ? ` lit. ${ref.lit})` : '');
+  return { docId, units: run.units, target, cite };
+}
+
+/* Panoul de trimiteri */
+const XR = { stack: [] };
+const xSplit = () => $('#vSplit');
+function openXref(ref, srcDocId, srcAnexa, push = true) {
+  const r = resolveRef(ref, srcDocId, srcAnexa);
+  if (r.missing) { toast(`„${r.missing}” nu este în bibliotecă. Adaug-o ca să poți deschide trimiterea.`, 4500); return; }
+  if (r.notFound) { toast(r.notFound, 4000); return; }
+  if (push) XR.stack.push(r); else XR.stack[XR.stack.length - 1] = r;
+  renderXref();
+}
+function renderXref() {
+  const r = XR.stack[XR.stack.length - 1];
+  if (!r) return closeXref();
+  const d = docById(r.docId);
+  xSplit().classList.add('has-x');
+  $('#xPane').hidden = false; $('#xDiv').hidden = false;
+  $('#xDoc').textContent = d ? d.title : '';
+  $('#xCite').innerHTML = esc(r.cite).replace(/\^(\d+)/g, '<sup>$1</sup>');
+  $('#xBack').hidden = XR.stack.length < 2;
+  const opts = searchOpts();
+  let html = '';
+  for (const u of r.units) {
+    const cur = u === r.target && r.units.length > 1 ? ' cur' : '';
+    const links = findRefs(u.text, false);
+    if (u.kind === 'head') { html += `<h4 class="td-h" data-i="${u.i}"><span>${esc(u.cite.split(' ').slice(0, 2).join(' '))}</span> ${richHTML(u.text, [], links)}</h4>`; continue; }
+    html += `<p class="td-p${cur}" data-i="${u.i}">${richHTML(u.text, [], links)}</p>`;
+  }
+  const xb = $('#xBody');
+  xb.innerHTML = `<div class="xdoc">${html}</div>`;
+  const t = xb.querySelector('.cur');
+  xb.scrollTop = t ? Math.max(0, t.offsetTop - 40) : 0;
+  setTimeout(onViewerResize, 0);
+}
+function closeXref() {
+  XR.stack = [];
+  xSplit().classList.remove('has-x');
+  $('#xPane').hidden = true; $('#xDiv').hidden = true;
+  setTimeout(onViewerResize, 0);
+}
+$('#xClose').onclick = closeXref;
+$('#xBack').onclick = () => { XR.stack.pop(); renderXref(); };
+$('#xOpen').onclick = () => { const r = XR.stack[XR.stack.length - 1]; if (r) openDocAt(r.docId, r.target); };
+$('#xBody').addEventListener('click', (e) => {
+  const a = e.target.closest('a.xref');
+  if (!a) return;
+  e.preventDefault();
+  const r = XR.stack[XR.stack.length - 1];
+  openXref(JSON.parse(a.dataset.ref), r.docId, anexaOf(r.target));
+});
+
+// orientarea împărțirii după forma zonei de vizualizare
+const splitRO = new ResizeObserver(() => {
+  const el = xSplit();
+  const w = el.clientWidth, h = el.clientHeight;
+  el.dataset.dir = w >= 880 && w > h * 1.15 ? 'row' : 'col';
+});
+splitRO.observe($('#vSplit'));
+(() => {
+  const div = $('#xDiv');
+  const saved = pref.get('xr', 0.45);
+  xSplit().style.setProperty('--xr', saved);
+  div.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    div.setPointerCapture(e.pointerId);
+    const el = xSplit();
+    const row = el.dataset.dir === 'row';
+    const rect = el.getBoundingClientRect();
+    const move = (ev) => {
+      const pos = row ? (rect.right - ev.clientX) / rect.width : (rect.bottom - ev.clientY) / rect.height;
+      const v = Math.min(0.8, Math.max(0.2, pos));
+      el.style.setProperty('--xr', v);
+      pref.set('xr', v);
+    };
+    const up = () => { div.removeEventListener('pointermove', move); div.removeEventListener('pointerup', up); div.removeEventListener('pointercancel', up); onViewerResize(); };
+    div.addEventListener('pointermove', move);
+    div.addEventListener('pointerup', up);
+    div.addEventListener('pointercancel', up);
+  });
+})();
+
 /* ---------------- Vizualizatorul ---------------- */
-const V = { docId: null, pdf: null, pages: [], key: 0, zoom: pref.get('zoom', 1), fit: 1, target: null, loading: null };
+const V = { docId: null, pdf: null, pages: [], key: 0, zoom: pref.get('zoom', 1), fit: 1, target: null, loading: null, hand: pref.get('hand', true), gesture: null };
 const vBody = $('#vBody');
-const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 2.5];
+const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 2.5, 3, 4];
+const ZMIN = 0.4, ZMAX = 4;
 
 async function getFile(id) {
   return memFiles.get(id) || await DB.get('files', id);
@@ -1799,7 +2009,9 @@ async function loadDoc(id) {
 
 function buildPageEls() {
   vBody.innerHTML = '';
-  const frag = document.createDocumentFragment();
+  const frag = document.createElement('div');
+  frag.className = 'pages';
+  V.pagesEl = frag;
   for (const pv of V.pages) {
     const el = document.createElement('div');
     el.className = 'pg';
@@ -1819,7 +2031,7 @@ function renderTextDoc() {
   for (const u of units) {
     let R = [];
     if (V.target !== null) for (const t of S.hl) R.push(...Core.findAll(u.n, t.t, opts.whole, t.ext));
-    const body = Core.fullParts(u, R).map(p => p.hl ? `<mark>${esc(p.t)}</mark>` : esc(p.t)).join('');
+    const body = richHTML(u.text, origRanges(u, R), findRefs(u.text, false));
     const cur = V.target && V.target.doc === V.docId && V.target.i === u.i ? ' cur' : '';
     if (u.kind === 'head') {
       const p = u.path && u.path[u.path.length - 1];
@@ -1877,7 +2089,7 @@ function visibleRange() {
 }
 
 function renderVisible() {
-  if (!V.pages.length) return;
+  if (!V.pages.length || V.gesture) return;
   const [f, l] = visibleRange();
   if (f < 0) return;
   for (let i = Math.max(0, f - 1); i <= Math.min(V.pages.length - 1, l + 1); i++) renderPage(V.pages[i]);
@@ -1982,30 +2194,35 @@ function highlightPage(pv) {
     return;
   }
   if (!pv.textDivs) return;
-  for (const sp of pv.textDivs) {
-    if (sp.dataset.raw !== undefined) { sp.textContent = sp.dataset.raw; delete sp.dataset.raw; }
-    if (!S.hl.length || V.target === null) continue;
-    const raw = sp.textContent;
-    if (!raw.trim()) continue;
-    const { norm: n, map } = Core.normWithMap(raw);
+  const doMarks = S.hl.length && V.target !== null;
+  // trimiterile se caută pe textul paginii unit, ca să prindă și „art. 6 alin. (2) din Legea nr.” rupt pe două rânduri
+  for (const sp of pv.textDivs) if (sp.dataset.raw !== undefined) { sp.textContent = sp.dataset.raw; delete sp.dataset.raw; }
+  const raws = pv.textDivs.map(sp => sp.textContent);
+  const offs = [];
+  let full = '';
+  for (const r of raws) { offs.push(full.length); full += r + ' '; }
+  const spanAt = (pos) => { let lo = 0, hi = offs.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (offs[mid] <= pos) lo = mid; else hi = mid - 1; } return lo; };
+  const pageLinks = /art/i.test(full) ? findRefs(full, false).filter(l => {
+    const si = spanAt(l.start);
+    const before = full.slice(offs[si], l.start);
+    const isHead = /^\s*$/.test(before) && /^A/.test(full.slice(l.start, l.end)) && /^\s*(\.?\s*[-–—]|$|\.?\s*\(1\))/.test(full.slice(l.end, offs[si] + raws[si].length + 1));
+    return !isHead;
+  }) : [];
+  pv.textDivs.forEach((sp, si) => {
+    const raw = raws[si];
+    if (!raw.trim()) return;
     let R = [];
-    for (const t of S.hl) R.push(...Core.findAll(n, t.t, opts.whole, t.ext));
-    if (!R.length) continue;
-    R = R.map(([a, b]) => [map[a], map[b - 1] + 1]).sort((x, y) => x[0] - y[0]);
-    const merged = [];
-    for (const r of R) { const l = merged[merged.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else merged.push(r); }
-    sp.dataset.raw = raw;
-    sp.textContent = '';
-    let pos = 0;
-    for (const [a, b] of merged) {
-      if (a > pos) sp.appendChild(document.createTextNode(raw.slice(pos, a)));
-      const m = document.createElement('mark');
-      m.textContent = raw.slice(a, b);
-      sp.appendChild(m);
-      pos = b;
+    if (doMarks) {
+      const { norm: n, map } = Core.normWithMap(raw);
+      for (const t of S.hl) R.push(...Core.findAll(n, t.t, opts.whole, t.ext));
+      R = R.map(([a, b]) => [map[a], map[b - 1] + 1]);
     }
-    if (pos < raw.length) sp.appendChild(document.createTextNode(raw.slice(pos)));
-  }
+    const a0 = offs[si], a1 = a0 + raw.length;
+    const links = pageLinks.filter(l => l.start < a1 && l.end > a0).map(l => ({ start: Math.max(0, l.start - a0), end: Math.min(raw.length, l.end - a0), ref: l.ref }));
+    if (!R.length && !links.length) return;
+    sp.dataset.raw = raw;
+    sp.innerHTML = richHTML(raw, R, links);
+  });
 }
 
 function drawBand(pv) {
@@ -2073,23 +2290,131 @@ function closeViewer(keepEmpty) {
 }
 
 vBody.addEventListener('scroll', scheduleRender, { passive: true });
-function setZoom(z) {
+function setZoom(z, focus) {
+  z = Math.min(ZMAX, Math.max(ZMIN, Math.round(z * 100) / 100));
   if (V.mode === 'text') { V.zoom = z; pref.set('zoom', z); $('#zoomVal').textContent = Math.round(z * 100) + '%'; vBody.style.setProperty('--td-zoom', z); return; }
   if (!V.pages.length) { V.zoom = z; $('#zoomVal').textContent = Math.round(z * 100) + '%'; pref.set('zoom', z); return; }
-  // păstrează poziția relativă
-  const [f] = visibleRange();
-  const el = V.pages[Math.max(0, f)].el;
-  const frac = (vBody.scrollTop - el.offsetTop) / el.offsetHeight;
+  const f = focus || { x: vBody.clientWidth / 2, y: vBody.clientHeight / 2 };
+  const old = scale();
+  const cx = vBody.scrollLeft + f.x, cy = vBody.scrollTop + f.y;
   V.zoom = z; pref.set('zoom', z);
   layout();
-  vBody.scrollTop = el.offsetTop + frac * el.offsetHeight;
+  const k = scale() / old;
+  vBody.scrollLeft = cx * k - f.x;
+  vBody.scrollTop = cy * k - f.y;
   V.pages.forEach(pv => drawBand(pv));
 }
+
+/* Gesturi: tragere cu mouse-ul, zoom cu două degete sau Ctrl+rotiță */
+function gestureZoom(r, fx, fy) {
+  if (V.mode === 'text') { setZoom(V.zoom * r); return; }
+  if (!V.pages.length || !V.pagesEl) return;
+  const G = V.gesture || (V.gesture = { r: 1, fx, fy });
+  G.r = Math.min(ZMAX / V.zoom, Math.max(ZMIN / V.zoom, G.r * r));
+  const ox = vBody.scrollLeft + G.fx - V.pagesEl.offsetLeft, oy = vBody.scrollTop + G.fy - V.pagesEl.offsetTop;
+  V.pagesEl.style.transformOrigin = `${ox}px ${oy}px`;
+  V.pagesEl.style.transform = `scale(${G.r})`;
+  $('#zoomVal').textContent = Math.round(V.zoom * G.r * 100) + '%';
+}
+function commitGesture() {
+  const G = V.gesture;
+  if (!G) return;
+  V.gesture = null;
+  if (V.pagesEl) { V.pagesEl.style.transform = ''; V.pagesEl.style.transformOrigin = ''; }
+  if (Math.abs(G.r - 1) > 0.01) setZoom(V.zoom * G.r, { x: G.fx, y: G.fy });
+  else $('#zoomVal').textContent = Math.round(V.zoom * 100) + '%';
+}
+let wheelT;
+vBody.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const rc = vBody.getBoundingClientRect();
+  gestureZoom(Math.exp(-e.deltaY * 0.0025), e.clientX - rc.left, e.clientY - rc.top);
+  clearTimeout(wheelT);
+  wheelT = setTimeout(commitGesture, 180);
+}, { passive: false });
+let pinch = null;
+const tdist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+vBody.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const rc = vBody.getBoundingClientRect();
+    pinch = { d: tdist(e.touches), fx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rc.left, fy: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rc.top, last: 1 };
+  }
+}, { passive: true });
+vBody.addEventListener('touchmove', (e) => {
+  if (!pinch || e.touches.length !== 2) return;
+  e.preventDefault();
+  const r = tdist(e.touches) / pinch.d;
+  gestureZoom(r / pinch.last, pinch.fx, pinch.fy);
+  pinch.last = r;
+}, { passive: false });
+const endPinch = (e) => { if (pinch && e.touches.length < 2) { pinch = null; commitGesture(); } };
+vBody.addEventListener('touchend', endPinch);
+vBody.addEventListener('touchcancel', endPinch);
+
+let drag = null;
+vBody.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'mouse' || e.button !== 0 || !V.hand || V.mode === 'text') return;
+  if (!e.target.closest('.pg')) return;
+  drag = { x: e.clientX, y: e.clientY, sl: vBody.scrollLeft, st: vBody.scrollTop, moved: false, id: e.pointerId };
+});
+window.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; vBody.classList.add('dragging'); }
+  if (drag.moved) { vBody.scrollLeft = drag.sl - dx; vBody.scrollTop = drag.st - dy; e.preventDefault(); }
+});
+window.addEventListener('pointerup', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (drag.moved) { vBody.classList.remove('dragging'); V.justDragged = Date.now(); }
+  drag = null;
+});
+function setHand(on) {
+  V.hand = on; pref.set('hand', on);
+  vBody.classList.toggle('hand', on);
+  const b = $('#handBtn');
+  b.setAttribute('aria-pressed', String(on));
+  b.setAttribute('aria-label', on ? 'Mod mână: trage ca să muți pagina (apasă pentru selectare text)' : 'Mod selectare text (apasă pentru mod mână)');
+  b.title = on ? 'Mână: trage pagina. Click pentru selectare text' : 'Selectare text. Click pentru mână';
+  b.innerHTML = on ? ICON_HAND : ICON_CURSOR;
+}
+const ICON_HAND = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5v-7a1.5 1.5 0 0 1 3 0v7M14 11.5v-5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6 7-2.7 0-4.2-1.3-5.6-3.5L4 14.8a1.5 1.5 0 0 1 2.4-1.8L8 15"/></svg>`;
+const ICON_CURSOR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M9 4h6M9 20h6M12 4v16"/></svg>`;
+$('#handBtn').onclick = () => setHand(!V.hand);
+setHand(V.hand);
+
+// click pe trimiteri în document
+vBody.addEventListener('click', (e) => {
+  const a = e.target.closest('a.xref');
+  if (!a) return;
+  e.preventDefault();
+  if (V.justDragged && Date.now() - V.justDragged < 300) return;
+  const ref = JSON.parse(a.dataset.ref);
+  let srcAnexa = null;
+  const iEl = a.closest('[data-i]');
+  const units = S.units.get(V.docId) || [];
+  if (iEl) srcAnexa = anexaOf(units[+iEl.dataset.i]);
+  else {
+    const pg = a.closest('.pg');
+    const n = pg ? +pg.dataset.n : 1;
+    const before = units.filter(u => u.page <= n);
+    srcAnexa = anexaOf(before[before.length - 1]);
+  }
+  openXref(ref, V.docId, srcAnexa);
+});
 $('#zoomIn').onclick = () => { const i = ZOOMS.findIndex(z => z > V.zoom + 0.001); if (i >= 0) setZoom(ZOOMS[i]); };
 $('#zoomOut').onclick = () => { const c = ZOOMS.filter(z => z < V.zoom - 0.001); if (c.length) setZoom(c[c.length - 1]); };
 $('#zoomVal').textContent = Math.round(V.zoom * 100) + '%';
 let rzT;
-window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { if (V.pages.length) { const old = V.fit; computeFit(); if (Math.abs(old - V.fit) / old > 0.03) setZoom(V.zoom); } }, 200); });
+function onViewerResize() {
+  clearTimeout(rzT);
+  rzT = setTimeout(() => {
+    if (!V.pages.length) return;
+    const old = V.fit; computeFit();
+    if (Math.abs(old - V.fit) / old > 0.03) { V.fit = old; setZoom(V.zoom); } else scheduleRender();
+  }, 150);
+}
+new ResizeObserver(onViewerResize).observe(vBody);
 
 /* ---------------- Navigare (telefon, sertar) ---------------- */
 function setTab(t) {
