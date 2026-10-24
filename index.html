@@ -196,7 +196,8 @@ a.xref:hover { text-decoration-thickness: 2px; }
 .v-empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); padding: 20px; }
 .v-empty .big { font: 400 64px/1 var(--serif); color: var(--rule); margin-bottom: 8px; }
 .pg { position: relative; margin: 0 auto 14px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 4px 14px rgba(0,0,0,.06); }
-.pg canvas { display: block; position: absolute; inset: 0; }
+.pg canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+.pg.stale .textLayer, .pg.stale .ocrLayer, .pg.stale .unit-band { visibility: hidden; }
 .pg .ph { position: absolute; inset: 0; display: grid; place-items: center; color: #9aa59f; font-size: 13px; }
 .unit-band { position: absolute; left: 0; right: 0; background: rgba(74,63,160,.07); pointer-events: none; z-index: 1; }
 .unit-band::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--stamp); }
@@ -2065,9 +2066,10 @@ function layout() {
   V.key++;
   const s = scale();
   for (const pv of V.pages) {
+    if (pv.task) { try { pv.task.cancel(); } catch {} pv.task = null; }
     pv.el.style.width = Math.floor(pv.w * s) + 'px';
     pv.el.style.height = Math.floor(pv.h * s) + 'px';
-    if (pv.rendered) { pv.el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`; pv.rendered = 0; }
+    if (pv.rendered || pv.has) { pv.el.classList.add('stale'); pv.rendered = 0; }
   }
   $('#zoomVal').textContent = Math.round(V.zoom * 100) + '%';
   scheduleRender();
@@ -2092,11 +2094,24 @@ function renderVisible() {
   if (!V.pages.length || V.gesture) return;
   const [f, l] = visibleRange();
   if (f < 0) return;
-  for (let i = Math.max(0, f - 1); i <= Math.min(V.pages.length - 1, l + 1); i++) renderPage(V.pages[i]);
+  const list = [];
+  for (let i = f; i <= l; i++) list.push(V.pages[i]);
+  if (f > 0) list.push(V.pages[f - 1]);
+  if (l < V.pages.length - 1) list.push(V.pages[l + 1]);
+  runQueue(list);
   // eliberează paginile îndepărtate
-  V.pages.forEach((pv, i) => { if (pv.rendered && (i < f - 5 || i > l + 5)) { pv.el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`; pv.rendered = 0; pv.textDivs = null; } });
+  V.pages.forEach((pv, i) => { if ((pv.rendered || pv.has) && (i < f - 5 || i > l + 5)) { pv.el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`; pv.el.classList.remove('stale'); pv.rendered = 0; pv.has = false; pv.textDivs = null; pv.ocrSpans = null; } });
   const cur = V.pages[f];
   $('#vFoot').textContent = V.mode === 'image' ? 'Imagine' : `Pagina ${cur.n} din ${V.pages.length}`;
+}
+
+let qRunning = false;
+async function runQueue(list) {
+  V.rq = list;
+  if (qRunning) return;
+  qRunning = true;
+  try { while (V.rq.length) { const pv = V.rq.shift(); if (V.pages.includes(pv)) await renderPage(pv); } }
+  finally { qRunning = false; }
 }
 
 async function renderPage(pv) {
@@ -2108,13 +2123,17 @@ async function renderPage(pv) {
     const page = await pdf.getPage(pv.n);
     if (key !== V.key || pdf !== V.pdf) return;
     const vp = page.getViewport({ scale: scale() });
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    // limită de pixeli: la zoom mare, randarea rămâne rapidă
+    let dpr = Math.min(2, window.devicePixelRatio || 1);
+    const MAXPX = 12e6;
+    if (vp.width * vp.height * dpr * dpr > MAXPX) dpr = Math.sqrt(MAXPX / (vp.width * vp.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.floor(vp.width * dpr);
     canvas.height = Math.floor(vp.height * dpr);
-    canvas.style.width = Math.floor(vp.width) + 'px';
-    canvas.style.height = Math.floor(vp.height) + 'px';
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+    const task = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null });
+    pv.task = task;
+    await task.promise;
+    if (pv.task === task) pv.task = null;
     if (key !== V.key || pdf !== V.pdf) return;
     const o = ocrLayerFor(pv, vp.height);
     let tl, textDivs = null, ocrSpans = null;
@@ -2123,7 +2142,8 @@ async function renderPage(pv) {
       tl = document.createElement('div');
       tl.className = 'textLayer';
       tl.style.setProperty('--scale-factor', vp.scale);
-      const tc = await page.getTextContent();
+      if (!pv.tc) pv.tc = await page.getTextContent();
+      const tc = pv.tc;
       textDivs = [];
       await pdfjsLib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs }).promise;
     }
@@ -2131,13 +2151,15 @@ async function renderPage(pv) {
     pv.el.innerHTML = '';
     pv.el.appendChild(canvas);
     pv.el.appendChild(tl);
+    pv.el.classList.remove('stale');
     pv.textDivs = textDivs;
     pv.ocrSpans = ocrSpans;
     pv.rendered = key;
+    pv.has = true;
     highlightPage(pv);
     drawBand(pv);
   } catch (e) {
-    if (key === V.key) console.error(e);
+    if (key === V.key && !(e && e.name === 'RenderingCancelledException')) console.error(e);
   } finally {
     if (pv.busy === key) pv.busy = false;
   }
@@ -2165,6 +2187,8 @@ function renderImagePage(pv) {
   img.alt = '';
   img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
   pv.el.innerHTML = '';
+  pv.el.classList.remove('stale');
+  pv.has = true;
   pv.el.appendChild(img);
   const o = ocrLayerFor(pv, pv.h * s);
   if (o) pv.el.appendChild(o.tl);
@@ -2268,13 +2292,42 @@ async function openDocAt(id, unit) {
     return;
   }
   V.pages.forEach(pv => { if (pv.rendered) { drawBand(pv); highlightPage(pv); } });
-  const pageN = unit ? unit.page : 1;
+  let pageN = unit ? unit.page : 1, topF = unit ? unit.top : 0;
+  const hit = unit ? await locateFirstHit(unit).catch(() => null) : null;
+  if (V.docId !== id) return;
+  if (hit) { pageN = hit.page; topF = hit.top; }
   const pv = V.pages[pageN - 1];
   if (!pv) return;
-  const y = pv.el.offsetTop + (unit ? unit.top * pv.el.offsetHeight : 0) - 70;
+  const y = pv.el.offsetTop + topF * pv.el.offsetHeight - 70;
   const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches && Math.abs(vBody.scrollTop - y) < vBody.clientHeight * 3;
   vBody.scrollTo({ top: Math.max(0, y), behavior: smooth ? 'smooth' : 'auto' });
   scheduleRender();
+}
+
+// pentru fragmente care se întind pe mai multe pagini: pagina și poziția primului termen găsit
+async function locateFirstHit(unit) {
+  if (!V.pdf || !S.hl.length || !unit.pageEnd || unit.pageEnd === unit.page) return null;
+  const opts = searchOpts();
+  const pdf = V.pdf;
+  for (let n = unit.page; n <= unit.pageEnd; n++) {
+    const pv = V.pages[n - 1];
+    if (!pv) break;
+    const page = await pdf.getPage(n);
+    if (!pv.tc) pv.tc = await page.getTextContent();
+    if (pdf !== V.pdf) return null;
+    const vp1 = page.getViewport({ scale: 1 });
+    for (const it of pv.tc.items) {
+      if (!it.str) continue;
+      const nn = Core.norm(it.str);
+      if (S.hl.some(t => Core.findAll(nn, t.t, opts.whole, t.ext).length)) {
+        const h = Math.hypot(it.transform[2], it.transform[3]) || 10;
+        const yTop = vp1.convertToViewportPoint(it.transform[4], it.transform[5] + h)[1];
+        if (n === unit.page && yTop / vp1.height < unit.top - 0.01) continue;
+        return { page: n, top: yTop / vp1.height };
+      }
+    }
+  }
+  return null;
 }
 
 function closeViewer(keepEmpty) {
@@ -2295,14 +2348,22 @@ function setZoom(z, focus) {
   if (V.mode === 'text') { V.zoom = z; pref.set('zoom', z); $('#zoomVal').textContent = Math.round(z * 100) + '%'; vBody.style.setProperty('--td-zoom', z); return; }
   if (!V.pages.length) { V.zoom = z; $('#zoomVal').textContent = Math.round(z * 100) + '%'; pref.set('zoom', z); return; }
   const f = focus || { x: vBody.clientWidth / 2, y: vBody.clientHeight / 2 };
-  const old = scale();
-  const cx = vBody.scrollLeft + f.x, cy = vBody.scrollTop + f.y;
+  const vr = vBody.getBoundingClientRect();
+  const px = vr.left + f.x, py = vr.top + f.y;
+  let anchor = null;
+  for (const pv of V.pages) {
+    const r = pv.el.getBoundingClientRect();
+    if (r.bottom + 7 >= py) { anchor = { pv, ax: (px - r.left) / r.width, ay: (py - r.top) / r.height }; break; }
+  }
   V.zoom = z; pref.set('zoom', z);
   layout();
-  const k = scale() / old;
-  vBody.scrollLeft = cx * k - f.x;
-  vBody.scrollTop = cy * k - f.y;
+  if (anchor) {
+    const r = anchor.pv.el.getBoundingClientRect();
+    vBody.scrollTop += (r.top + anchor.ay * r.height) - py;
+    vBody.scrollLeft += (r.left + anchor.ax * r.width) - px;
+  }
   V.pages.forEach(pv => drawBand(pv));
+  scheduleRender();
 }
 
 /* Gesturi: tragere cu mouse-ul, zoom cu două degete sau Ctrl+rotiță */
