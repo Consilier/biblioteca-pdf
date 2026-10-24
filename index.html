@@ -171,6 +171,16 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padd
 .textLayer span.markedContent { top: 0; height: 0; }
 .textLayer mark { background: rgba(255,200,0,.42); color: transparent; padding: 0; border-radius: 2px; }
 .textLayer ::selection { background: rgba(74,63,160,.3); }
+.ocrLayer { position: absolute; inset: 0; z-index: 2; overflow: hidden; }
+.ocrLayer span { position: absolute; color: transparent; white-space: pre; line-height: 1; overflow: hidden; border-radius: 2px; cursor: text; }
+.ocrLayer span.ocr-hit { background: rgba(255,200,0,.42); }
+.ocrLayer ::selection { background: rgba(74,63,160,.3); }
+.textdoc { max-width: 72ch; margin: 0 auto; padding: 26px 30px 40px; background: var(--surface); border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.12); font: calc(15.5px * var(--td-zoom, 1))/1.65 var(--serif); }
+.textdoc .td-p { margin: 0 0 .7em; padding: 2px 6px; border-radius: 4px; }
+.textdoc .td-h { margin: 1.3em 0 .5em; padding: 2px 6px; font: 600 1.02em/1.4 var(--serif); }
+.textdoc .td-h span { color: var(--muted); font-weight: 400; }
+.textdoc .cur { background: var(--stamp-soft); box-shadow: -5px 0 0 var(--stamp); }
+.btn.attn { border-color: var(--stamp); color: var(--stamp); font-weight: 600; }
 .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: -1; cursor: default; user-select: none; }
 
 /* Google Drive */
@@ -276,7 +286,7 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padd
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         Adaugă
       </button>
-      <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
+      <input type="file" id="file" accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp,.bmp,.gif,.heic,application/pdf,text/plain,image/*" multiple hidden>
     </div>
     <div class="drive">
       <div class="drive-row">
@@ -296,7 +306,7 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padd
       <button class="btn ghost" id="selNone">niciunul</button>
     </div>
     <ul class="doclist" id="docList"></ul>
-    <p class="lib-note">Fișierele rămân doar în acest browser, pe acest calculator. Nu sunt trimise nicăieri.</p>
+    <p class="lib-note">Acceptă PDF, Word (.docx), text și poze. Fișierele rămân doar în acest browser, pe acest calculator.</p>
   </aside>
   <div class="scrim" id="scrim"></div>
 
@@ -668,7 +678,7 @@ const Core = (() => {
       let m;
 
       // Anexa
-      if (!midSentence() && (m = n.match(ANEXA)) && /^A/.test(t) && t.length <= 120 && (!m[2] || !/^[a-z]/.test(t.slice(t.length - m[2].length)))) {
+      if ((!midSentence() || /^ANEXA/.test(t)) && (m = n.match(ANEXA)) && /^A/.test(t) && t.length <= 120 && (!m[2] || !/^[a-z]/.test(t.slice(t.length - m[2].length)))) {
         resetBelow(0);
         let title = m[2] ? t.slice(t.length - m[2].length).trim() : '';
         if (!title && stream[i + 1] && !isMarkerLine(stream[i + 1].text) && stream[i + 1].text.length < 140 && isUpperLine(stream[i + 1].text)) { title = stream[++i].text; }
@@ -680,7 +690,7 @@ const Core = (() => {
 
       // Titlu, capitol, secțiune...
       let head = null;
-      if (t.length <= 140 && /^\p{Lu}/u.test(t) && !midSentence()) {
+      if (t.length <= 140 && /^\p{Lu}/u.test(t) && (!midSentence() || /^\p{Lu}{4,}\s/u.test(t))) {
         for (const h of HEADS) { if ((m = n.match(h.re))) { head = h; break; } }
       }
       if (head) {
@@ -1039,16 +1049,116 @@ function toast(msg, ms = 3200) {
   toastT = setTimeout(() => t.classList.remove('on'), ms);
 }
 
+/* ---------------- OCR (Tesseract.js, limba română) ---------------- */
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = src; sc.async = true;
+    sc.onload = res; sc.onerror = () => rej(new Error('script'));
+    document.head.appendChild(sc);
+  });
+}
+const OCR = {
+  SRC: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  worker: null, wp: null, failed: false, idleT: null,
+  get() {
+    if (this.failed) return Promise.reject(new Error('ocr'));
+    if (this.worker) return Promise.resolve(this.worker);
+    if (!this.wp) {
+      this.wp = (async () => {
+        if (typeof Tesseract === 'undefined') await loadScript(this.SRC);
+        const w = await Tesseract.createWorker('ron', 1);
+        this.worker = w;
+        return w;
+      })().catch((e) => { console.error(e); this.failed = true; this.wp = null; throw e; });
+    }
+    return this.wp;
+  },
+  async recognize(canvas) {
+    clearTimeout(this.idleT);
+    const w = await this.get();
+    try { return (await w.recognize(canvas)).data; }
+    finally { this.idleT = setTimeout(() => this.stop(), 90000); }
+  },
+  async stop() {
+    const w = this.worker;
+    this.worker = null; this.wp = null;
+    if (w) { try { await w.terminate(); } catch {} }
+  },
+};
+const r4 = (v) => Math.round(v * 10000) / 10000;
+
+async function ocrPage(page) {
+  const vp1 = page.getViewport({ scale: 1 });
+  const sc = Math.min(4, 2400 / Math.max(vp1.width, vp1.height));
+  const vp = page.getViewport({ scale: sc });
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  const r = await ocrCanvas(c, sc);
+  c.width = c.height = 0;
+  return r;
+}
+
+async function ocrCanvas(c, sc) {
+  const data = await OCR.recognize(c);
+  const W = c.width, H = c.height;
+  const lines = [], words = [];
+  for (const ln of data.lines || []) {
+    const t = (ln.text || '').replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    if (ln.confidence < 35 && t.replace(/[^\p{L}]/gu, '').length < 4) continue;
+    lines.push({ text: t, top: ln.bbox.y0 / sc, h: (ln.bbox.y1 - ln.bbox.y0) / sc, x: ln.bbox.x0 / sc });
+    for (const w of ln.words || []) {
+      if (!w.text || !w.text.trim()) continue;
+      words.push([w.text, r4(w.bbox.x0 / W), r4(w.bbox.y0 / H), r4(w.bbox.x1 / W), r4(w.bbox.y1 / H)]);
+    }
+  }
+  return { lines, words };
+}
+
+/* ---------------- Tipuri de fișiere ---------------- */
+const MIME_DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const MIME_GDOC = 'application/vnd.google-apps.document';
+function kindOf(name, mime) {
+  name = name || ''; mime = mime || '';
+  if (mime === MIME_GDOC) return 'gdoc';
+  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf';
+  if (/heic|heif/i.test(mime) || /\.(heic|heif)$/i.test(name)) return 'heic';
+  if (/^image\/(jpeg|png|webp|bmp|gif)$/.test(mime) || /\.(jpe?g|png|webp|bmp|gif)$/i.test(name)) return 'image';
+  if (mime === MIME_DOCX || /\.docx$/i.test(name)) return 'docx';
+  if (mime === 'application/msword' || /\.doc$/i.test(name)) return 'doc';
+  if (mime === 'text/plain' || /\.txt$/i.test(name)) return 'text';
+  return null;
+}
+const UNSUPPORTED = {
+  doc: 'Format Word vechi (.doc), care nu poate fi citit în browser. Deschide-l în Word și salvează-l ca .docx sau PDF.',
+  heic: 'Poză în format HEIC (iPhone), pe care browserul nu o poate deschide. Salveaz-o ca JPG.',
+};
+const isTextKind = (k) => k === 'text' || k === 'docx';
+const baseName = (n) => (n || '').replace(/\.(pdf|docx?|txt|jpe?g|png|webp|bmp|gif|heic|heif)$/i, '');
+
 /* ---------------- Biblioteca ---------------- */
 const fmtCount = (n, one, many) => n === 1 ? `1 ${one}` : `${n.toLocaleString('ro-RO')} ${n >= 20 || n === 0 ? 'de ' : ''}${many}`;
 
 function docMeta(d) {
+  if (d.status === 'processing' && d.phase === 'ocr') return `Recunoaștere text (OCR), pagina ${d.ocrAt} din ${d.pages}`;
   if (d.status === 'processing') return d.pages ? `Se citește pagina ${Math.max(1, Math.round(d.progress * d.pages))} din ${d.pages}` : 'Se deschide…';
   if (d.status === 'queued') return 'În așteptare';
   if (d.status === 'downloading') return 'Se descarcă din Drive…';
-  const parts = [fmtCount(d.pages, 'pagină', 'pagini')];
+  if (d.status === 'unsupported') return 'Nu poate fi citit';
+  if (d.status === 'processing' && isTextKind(d.kind)) return 'Se citește textul…';
+  const parts = [];
+  if (d.kind === 'image') parts.push('Imagine');
+  else if (d.kind === 'docx') parts.push('Document Word');
+  else if (d.kind === 'text') parts.push('Fișier text');
+  else parts.push(fmtCount(d.pages, 'pagină', 'pagini') + (d.kind === 'gdoc' ? ' (Google Docs)' : ''));
   if (d.artCount) parts.push(d.artMin !== null && d.artMax !== null && d.artMax > d.artMin ? `art. ${d.artMin}–${d.artMax}` : fmtCount(d.artCount, 'articol', 'articole'));
   else if (d.units) parts.push(fmtCount(d.units, 'fragment', 'fragmente'));
+  if (d.ocrPages) parts.push(d.ocrPages === d.pages ? 'text recunoscut prin OCR' : `${d.ocrPages} pag. prin OCR`);
+  else if (d.kind === 'image' && d.ocrDone && d.emptyPages) parts.push('fără text recunoscut');
   return parts.join(', ');
 }
 
@@ -1059,12 +1169,13 @@ function docItem(d) {
   const busy = d.status === 'processing' || d.status === 'queued' || d.status === 'downloading';
   let warn = '';
   if (d.status === 'error') warn = `<div class="doc-err">${esc(d.error || 'Fișierul nu a putut fi citit.')}</div>`;
-  else if (d.status === 'ready' && d.pages && d.emptyPages === d.pages) warn = `<div class="doc-warn">Document scanat, fără text. Va putea fi căutat după ce adăugăm recunoașterea textului (OCR).</div>`;
-  else if (d.status === 'ready' && d.emptyPages) warn = `<div class="doc-warn">${fmtCount(d.emptyPages, 'pagină', 'pagini')} fără text (scanate), deocamdată necăutabile.</div>`;
+  else if (d.status === 'unsupported') warn = `<div class="doc-warn">${esc(UNSUPPORTED[d.kind] || 'Format necunoscut.')}</div>`;
+  else if (d.status === 'ready' && d.emptyPages && !d.ocrDone) warn = `<div class="doc-warn">${d.emptyPages === d.pages ? 'Document scanat' : fmtCount(d.emptyPages, 'pagină scanată', 'pagini scanate')}, încă fără recunoașterea textului (OCR). Aceasta pornește automat în versiunea de pe GitHub Pages.</div>`;
+  else if (d.status === 'ready' && d.ocrDone && d.pages && d.emptyPages === d.pages) warn = `<div class="doc-warn">Nu s-a putut recunoaște text în acest document.</div>`;
   return `<li class="doc" data-id="${d.id}">
-    <input type="checkbox" ${S.enabled.has(d.id) ? 'checked' : ''} ${d.status !== 'ready' ? 'disabled' : ''} aria-label="Include în căutare">
+    <input type="checkbox" ${S.enabled.has(d.id) && d.status === 'ready' ? 'checked' : ''} ${d.status !== 'ready' ? 'disabled' : ''} aria-label="Include în căutare">
     <div>
-      <button class="doc-title" data-act="open" title="Deschide documentul">${esc(d.title)}</button>
+      <button class="doc-title" data-act="open" title="Deschide documentul">${esc(d.title)}${d.kind && d.kind !== 'pdf' && d.status !== 'unsupported' ? '' : ''}</button>
       <div class="doc-meta">${esc(docMeta(d))}</div>
       ${d.drivePath ? `<div class="doc-meta">în ${esc(d.drivePath)}</div>` : ''}
       ${busy ? `<div class="bar"><i style="width:${Math.round((d.progress || 0) * 100)}%"></i></div>` : ''}
@@ -1096,7 +1207,7 @@ function renderLib() {
     const ds = S.docs.filter(d => d.driveFolder === fo.id);
     html += `<li class="src-h" data-folder="${esc(fo.id)}">${ICON_DRIVE}<span class="src-name" title="${esc(fo.name)}">${esc(fo.name)}</span><span class="n">${ds.length}</span>
       <button class="btn ghost" data-act="rmfolder" aria-label="Scoate folderul din bibliotecă"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></li>`;
-    html += ds.length ? ds.map(docItem).join('') : `<li class="src-empty">${S.syncing ? 'Se verifică folderul…' : 'Niciun PDF încă. Apasă „Sincronizează”.'}</li>`;
+    html += ds.length ? ds.map(docItem).join('') : `<li class="src-empty">${S.syncing ? 'Se verifică folderul…' : 'Niciun document încă. Apasă „Sincronizează”.'}</li>`;
   }
   ul.innerHTML = html;
   renderStats();
@@ -1193,8 +1304,8 @@ $('#docList').addEventListener('click', async (e) => {
   }
 });
 
-const stripDoc = (d) => ({ id: d.id, name: d.name, size: d.size, added: d.added, title: d.title, customTitle: !!d.customTitle, pages: d.pages, emptyPages: d.emptyPages, units: d.units, artCount: d.artCount, artMin: d.artMin, artMax: d.artMax, status: 'ready',
-  driveId: d.driveId, driveFolder: d.driveFolder, drivePath: d.drivePath, driveModified: d.driveModified });
+const stripDoc = (d) => ({ id: d.id, name: d.name, size: d.size, added: d.added, title: d.title, customTitle: !!d.customTitle, pages: d.pages, emptyPages: d.emptyPages, units: d.units, artCount: d.artCount, artMin: d.artMin, artMax: d.artMax, status: d.status === 'unsupported' ? 'unsupported' : 'ready', kind: d.kind || 'pdf',
+  driveId: d.driveId, driveFolder: d.driveFolder, drivePath: d.drivePath, driveModified: d.driveModified, ocrDone: !!d.ocrDone, ocrPages: d.ocrPages || 0 });
 
 async function removeDoc(d) {
   S.docs = S.docs.filter(x => x !== d);
@@ -1202,7 +1313,7 @@ async function removeDoc(d) {
   S.units.delete(d.id);
   S.enabled.delete(d.id); saveEnabled();
   memFiles.delete(d.id);
-  await Promise.all([DB.del('docs', d.id), DB.del('files', d.id), DB.del('units', d.id)]).catch(() => {});
+  await Promise.all([DB.del('docs', d.id), DB.del('files', d.id), DB.del('units', d.id), DB.del('units', d.id + ':ocr')]).catch(() => {});
   if (V.docId === d.id) closeViewer();
 }
 
@@ -1214,12 +1325,14 @@ function addFiles(list) {
   let added = 0;
   const t0 = Date.now();
   for (const f of list) {
-    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { toast(`„${f.name}” nu este PDF și a fost ignorat.`); continue; }
+    const kind = kindOf(f.name, f.type);
+    if (!kind) { toast(`„${f.name}” nu este un format acceptat (PDF, Word .docx, text, imagine) și a fost ignorat.`); continue; }
     if (S.docs.some(d => !d.driveId && d.name === f.name && d.size === f.size && d.status !== 'error')) { toast(`„${f.name}” este deja în bibliotecă.`); continue; }
-    const d = { id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), name: f.name, size: f.size, added: t0 + added, title: f.name.replace(/\.pdf$/i, ''), status: 'queued', progress: 0, pages: 0 };
+    const d = { id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), name: f.name, size: f.size, added: t0 + added, title: baseName(f.name), status: 'queued', progress: 0, pages: 0, kind };
     S.docs.push(d);
-    queue.push({ d, f });
     added++;
+    if (UNSUPPORTED[kind]) { d.status = 'unsupported'; DB.put('docs', stripDoc(d)).catch(() => {}); continue; }
+    queue.push({ d, f });
   }
   if (added) { renderLib(); pump(); }
 }
@@ -1234,27 +1347,36 @@ async function pump() {
     catch (err) {
       console.error(err);
       d.status = 'error';
-      d.error = err && err.name === 'PasswordException' ? 'PDF protejat cu parolă. Deschide-l, salvează o copie fără parolă și adaug-o din nou.' : 'Fișierul nu a putut fi citit. Poate fi deteriorat sau într-un format neobișnuit.';
+      d.error = err && err.userMsg ? err.userMsg : err && err.name === 'PasswordException' ? 'PDF protejat cu parolă. Deschide-l, salvează o copie fără parolă și adaug-o din nou.' : 'Fișierul nu a putut fi citit. Poate fi deteriorat sau într-un format neobișnuit.';
       renderLib();
     }
   }
   working = false;
 }
 
-async function processDoc(d, file) {
-  d.status = 'processing';
-  renderLib();
+async function extractPdf(d, file) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)), isEvalSupported: false }).promise;
   d.pages = pdf.numPages;
   const pages = [];
-  let empty = 0, lastUi = 0;
+  const ocrWords = {};
+  let empty = 0, lastUi = 0, ocrPages = 0, ocrOk = true;
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const vp = page.getViewport({ scale: 1 });
     const tc = await page.getTextContent();
-    const lines = Core.pageLines(tc.items, vp.width, vp.height, (x, y) => vp.convertToViewportPoint(x, y)[1]);
-    const chars = lines.reduce((a, l) => a + l.text.length, 0);
+    let lines = Core.pageLines(tc.items, vp.width, vp.height, (x, y) => vp.convertToViewportPoint(x, y)[1]);
+    let chars = lines.reduce((a, l) => a + l.text.length, 0);
+    if (chars < 20 && ocrOk) {
+      d.phase = 'ocr'; d.ocrAt = p; updateProgress(d);
+      try {
+        const r = await ocrPage(page);
+        const oc = r.lines.reduce((a, l) => a + l.text.length, 0);
+        if (oc >= 20) { lines = r.lines; chars = oc; ocrWords[p] = r.words; ocrPages++; }
+      } catch (e) { ocrOk = false; }
+      d.phase = '';
+      if (!S.docs.includes(d)) { pdf.destroy(); return null; }
+    }
     if (chars < 20) empty++;
     pages.push({ lines, h: vp.height });
     page.cleanup();
@@ -1262,25 +1384,91 @@ async function processDoc(d, file) {
     if (performance.now() - lastUi > 120) { updateProgress(d); lastUi = performance.now(); await new Promise(r => setTimeout(r, 0)); }
   }
   pdf.destroy();
+  return { pages, empty, ocrPages, ocrOk, ocrWords };
+}
+
+async function extractImage(d, file) {
+  d.pages = 1;
+  const bmp = await createImageBitmap(file);
+  const sc = Math.min(1, 3200 / Math.max(bmp.width, bmp.height));
+  const W = Math.round(bmp.width * sc), H = Math.round(bmp.height * sc);
+  d.imgW = W; d.imgH = H;
+  let res = { pages: [{ lines: [], h: H }], empty: 1, ocrPages: 0, ocrOk: true, ocrWords: {} };
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(bmp, 0, 0, W, H);
+  bmp.close && bmp.close();
+  d.phase = 'ocr'; d.ocrAt = 1; updateProgress(d);
+  try {
+    const r = await ocrCanvas(c, 1);
+    const oc = r.lines.reduce((a, l) => a + l.text.length, 0);
+    if (oc >= 10) res = { pages: [{ lines: r.lines, h: H }], empty: 0, ocrPages: 1, ocrOk: true, ocrWords: { 1: r.words } };
+  } catch (e) { res.ocrOk = false; }
+  d.phase = '';
+  c.width = c.height = 0;
+  return res;
+}
+
+let mammothP = null;
+async function extractText(d, file) {
+  d.pages = 1;
+  const buf = await file.arrayBuffer();
+  let text = '';
+  if (d.kind === 'docx') {
+    if (!mammothP) mammothP = (typeof mammoth !== 'undefined' ? Promise.resolve() : loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js')).catch((e) => { mammothP = null; throw e; });
+    try { await mammothP; }
+    catch (e) { const er = new Error('mammoth'); er.userMsg = 'Componenta pentru fișiere Word nu s-a putut încărca. Verifică internetul și încearcă din nou.'; throw er; }
+    text = (await mammoth.extractRawText({ arrayBuffer: buf })).value || '';
+  } else {
+    text = new TextDecoder('utf-8').decode(buf);
+    if ((text.match(/\uFFFD/g) || []).length > 2) text = new TextDecoder('windows-1250').decode(buf);
+    text = text.replace(/^\uFEFF/, '');
+  }
+  // fiecare rând devine o linie; rândurile goale marchează paragrafe noi
+  const lines = [];
+  let top = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const t = raw.replace(/\s+/g, ' ').trim();
+    if (!t) { top += 20; continue; }
+    top += 10;
+    lines.push({ text: t, top, h: 10, x: 0 });
+  }
+  return { pages: [{ lines, h: top + 20 }], empty: lines.length ? 0 : 1, ocrPages: 0, ocrOk: true, ocrWords: {} };
+}
+
+async function processDoc(d, file) {
+  d.status = 'processing';
+  renderLib();
+  const kind = d.kind || 'pdf';
+  const res = kind === 'image' ? await extractImage(d, file) : isTextKind(kind) ? await extractText(d, file) : await extractPdf(d, file);
+  if (!res || !S.docs.includes(d)) return;
+  const { pages, empty, ocrPages, ocrOk, ocrWords } = res;
   const r = Core.buildDoc(pages);
   if (!S.docs.includes(d)) return;
-  if (!d.customTitle) d.title = r.title || d.name.replace(/\.pdf$/i, '');
-  Object.assign(d, { emptyPages: empty, units: r.units.length, artCount: r.artCount, artMin: r.artMin, artMax: r.artMax, status: 'ready', progress: 1 });
+  if (!d.customTitle) d.title = r.title || baseName(d.name);
+  Object.assign(d, { emptyPages: empty, ocrPages, ocrDone: ocrOk, units: r.units.length, artCount: r.artCount, artMin: r.artMin, artMax: r.artMax, status: 'ready', progress: 1 });
   try {
     await DB.put('files', file, d.id);
     await DB.put('units', r.units, d.id);
+    if (ocrPages) await DB.put('units', { pages: ocrWords, w: d.imgW, h: d.imgH }, d.id + ':ocr');
+    else await DB.del('units', d.id + ':ocr');
     await DB.put('docs', stripDoc(d));
   } catch (e) {
     console.error(e);
     toast('Documentul a fost citit, dar nu a putut fi salvat în browser (spațiu insuficient?). Rămâne disponibil până închizi pagina.', 6000);
     memFiles.set(d.id, file);
   }
+  memOcr.set(d.id, ocrPages ? { pages: ocrWords, w: d.imgW, h: d.imgH } : null);
   attachUnits(d.id, r.units);
+  if (V.docId === d.id) closeViewer();
   S.enabled.add(d.id); saveEnabled();
   renderLib();
   if ($('#q').value.trim()) runSearch(); else renderResults();
 }
 const memFiles = new Map();
+const memOcr = new Map();
 
 function attachUnits(id, units) {
   for (const u of units) { u.doc = id; Core.prepareUnit(u); }
@@ -1442,7 +1630,8 @@ function renderResults() {
   for (const g of groups) {
     const d = docById(g.id);
     const lim = S.shown.get(g.id) || PER;
-    html += `<div class="group-h"><strong>${esc(d ? d.title : '')}</strong><span>${fmtCount(g.items.length, 'rezultat', 'rezultate')}</span></div>`;
+    const fo = d && d.driveId ? S.folders.find(f => f.id === d.driveFolder) : null;
+    html += `<div class="group-h"><strong>${esc(d ? d.title : '')}</strong><span>${fmtCount(g.items.length, 'rezultat', 'rezultate')}${fo ? `, din Drive „${esc(fo.name)}”` : ''}</span></div>`;
     g.items.slice(0, lim).forEach((r) => {
       const k = S.flat.length;
       S.flat.push(r);
@@ -1460,12 +1649,13 @@ function hitHtml(r, k) {
   const u = r.u;
   const sn = Core.snippet(u, r.ranges, 300);
   const text = (sn.pre ? '… ' : '') + sn.parts.map(p => p.hl ? `<mark>${esc(p.t)}</mark>` : esc(p.t)).join('') + (sn.post ? ' …' : '');
-  const path = pathLine(u);
   const lab = mainLabel(u);
-  const pg = u.pageEnd && u.pageEnd !== u.page ? `pag. ${u.page}–${u.pageEnd}` : `pag. ${u.page}`;
+  const path = u.cite ? pathLine(u) : pathLine({ path: (u.path || []).slice(0, -1) });
+  const dk = (docById(u.doc) || {}).kind;
+  const pg = isTextKind(dk) || dk === 'image' ? '' : u.pageEnd && u.pageEnd !== u.page ? `pag. ${u.page}–${u.pageEnd}` : `pag. ${u.page}`;
   const score = S.mode === 'similar' ? `<span class="score">${Math.round(r.ratio * 100)}% potrivire</span>` : '';
   return `<article class="hit" data-k="${k}" tabindex="0" aria-current="false">
-    ${path && (u.cite || u.kind !== 'head') ? `<div class="hit-path">${esc(path)}</div>` : ''}
+    ${path ? `<div class="hit-path">${esc(path)}</div>` : ''}
     <div class="hit-cite"><span class="cite">${lab.html}</span>${score}<span class="pgno">${pg}</span></div>
     <p class="hit-text">${text}</p>
     <div class="hit-act">
@@ -1513,7 +1703,7 @@ $('#results').addEventListener('keydown', (e) => {
 
 function citationText(r) {
   const u = r.u, d = docById(u.doc);
-  const where = u.cite ? u.cite.replace(/^Art\./, 'art.') : (pathLine(u) || `pag. ${u.page}`);
+  const where = u.cite ? u.cite.replace(/^Art\./, 'art.') : (pathLine(u) || (isTextKind(d && d.kind) || (d && d.kind === 'image') ? 'fragment' : `pag. ${u.page}`));
   return `${d ? d.title : ''}, ${where}:\n„${u.text}”`;
 }
 async function copyHit(r) {
@@ -1563,19 +1753,37 @@ async function getFile(id) {
 }
 
 async function loadDoc(id) {
-  if (V.docId === id && V.pdf) return true;
+  if (V.docId === id && (V.pdf || V.mode !== 'pdf')) return true;
   closeViewer(true);
   V.docId = id;
   const d = docById(id);
   $('#vDoc').textContent = d ? d.title : '';
+  const kind = (d && d.kind) || 'pdf';
+  if (isTextKind(kind)) { V.mode = 'text'; renderTextDoc(); return true; }
   vBody.innerHTML = `<div class="v-empty"><div>Se deschide documentul…</div></div>`;
   const blob = await getFile(id);
   if (!blob) { vBody.innerHTML = `<div class="v-empty"><div>Fișierul nu mai este în browser. Șterge documentul din bibliotecă și adaugă-l din nou.</div></div>`; return false; }
+  if (kind === 'image') {
+    V.mode = 'image';
+    V.ocr = memOcr.has(id) ? memOcr.get(id) : await DB.get('units', id + ':ocr').catch(() => null);
+    const bmp = await createImageBitmap(blob).catch(() => null);
+    if (V.docId !== id) return false;
+    if (!bmp) { vBody.innerHTML = `<div class="v-empty"><div>Imaginea nu poate fi afișată.</div></div>`; return false; }
+    V.imgUrl = URL.createObjectURL(blob);
+    V.pages = [{ n: 1, w: bmp.width, h: bmp.height, el: null, rendered: 0, busy: false }];
+    bmp.close && bmp.close();
+    buildPageEls();
+    layout();
+    return true;
+  }
+  V.mode = 'pdf';
   const buf = await blob.arrayBuffer();
   if (V.docId !== id) return false;
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
   if (V.docId !== id) { pdf.destroy(); return false; }
   V.pdf = pdf;
+  V.ocr = memOcr.has(id) ? memOcr.get(id) : await DB.get('units', id + ':ocr').catch(() => null);
+  if (V.docId !== id) return false;
   const sizes = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const pg = await pdf.getPage(p);
@@ -1584,6 +1792,12 @@ async function loadDoc(id) {
   }
   if (V.docId !== id) return false;
   V.pages = sizes.map((s, i) => ({ n: i + 1, w: s.w, h: s.h, el: null, rendered: 0, busy: false }));
+  buildPageEls();
+  layout();
+  return true;
+}
+
+function buildPageEls() {
   vBody.innerHTML = '';
   const frag = document.createDocumentFragment();
   for (const pv of V.pages) {
@@ -1595,11 +1809,38 @@ async function loadDoc(id) {
     frag.appendChild(el);
   }
   vBody.appendChild(frag);
-  layout();
-  return true;
+}
+
+function renderTextDoc() {
+  const units = S.units.get(V.docId) || [];
+  const opts = searchOpts();
+  let html = '<article class="textdoc">';
+  let lastArt = null;
+  for (const u of units) {
+    let R = [];
+    if (V.target !== null) for (const t of S.hl) R.push(...Core.findAll(u.n, t.t, opts.whole, t.ext));
+    const body = Core.fullParts(u, R).map(p => p.hl ? `<mark>${esc(p.t)}</mark>` : esc(p.t)).join('');
+    const cur = V.target && V.target.doc === V.docId && V.target.i === u.i ? ' cur' : '';
+    if (u.kind === 'head') {
+      const p = u.path && u.path[u.path.length - 1];
+      const lab = u.cite && u.artTitle ? esc(u.cite.split(' ').slice(0, 2).join(' ')) : (p && p.label !== u.text ? esc(p.label) : '');
+      html += `<h4 class="td-h${cur}" data-i="${u.i}">${lab ? `<span>${lab}</span> ` : ''}${body}</h4>`;
+      if (u.cite) lastArt = u.cite.split(' ').slice(0, 2).join(' ');
+      continue;
+    }
+    const art = u.cite ? u.cite.split(' ').slice(0, 2).join(' ') : null;
+    const pre = art && art !== lastArt ? `<b>${esc(art.replace(/\^(\d+)/, '^$1'))}</b> ` : '';
+    lastArt = art || lastArt;
+    html += `<p class="td-p${cur}" data-i="${u.i}">${pre}${body}</p>`;
+  }
+  html += '</article>';
+  vBody.innerHTML = units.length ? html : `<div class="v-empty"><div>Documentul nu conține text.</div></div>`;
+  vBody.style.setProperty('--td-zoom', V.zoom);
+  $('#vFoot').textContent = 'Document text';
 }
 
 function computeFit() {
+  if (!V.pages.length) return;
   const maxW = Math.max(...V.pages.map(p => p.w));
   const avail = Math.max(200, vBody.clientWidth - (window.innerWidth < 760 ? 24 : 40));
   V.fit = avail / maxW;
@@ -1636,18 +1877,19 @@ function visibleRange() {
 }
 
 function renderVisible() {
-  if (!V.pdf) return;
+  if (!V.pages.length) return;
   const [f, l] = visibleRange();
   if (f < 0) return;
   for (let i = Math.max(0, f - 1); i <= Math.min(V.pages.length - 1, l + 1); i++) renderPage(V.pages[i]);
   // eliberează paginile îndepărtate
   V.pages.forEach((pv, i) => { if (pv.rendered && (i < f - 5 || i > l + 5)) { pv.el.innerHTML = `<div class="ph">Pagina ${pv.n}</div>`; pv.rendered = 0; pv.textDivs = null; } });
   const cur = V.pages[f];
-  $('#vFoot').textContent = `Pagina ${cur.n} din ${V.pages.length}`;
+  $('#vFoot').textContent = V.mode === 'image' ? 'Imagine' : `Pagina ${cur.n} din ${V.pages.length}`;
 }
 
 async function renderPage(pv) {
   if (pv.rendered === V.key || pv.busy === V.key) return;
+  if (V.mode === 'image') { renderImagePage(pv); return; }
   const key = V.key, pdf = V.pdf;
   pv.busy = key;
   try {
@@ -1662,17 +1904,23 @@ async function renderPage(pv) {
     canvas.style.height = Math.floor(vp.height) + 'px';
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
     if (key !== V.key || pdf !== V.pdf) return;
-    const tl = document.createElement('div');
-    tl.className = 'textLayer';
-    tl.style.setProperty('--scale-factor', vp.scale);
-    const tc = await page.getTextContent();
-    const textDivs = [];
-    await pdfjsLib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs }).promise;
+    const o = ocrLayerFor(pv, vp.height);
+    let tl, textDivs = null, ocrSpans = null;
+    if (o) { tl = o.tl; ocrSpans = o.spans; }
+    else {
+      tl = document.createElement('div');
+      tl.className = 'textLayer';
+      tl.style.setProperty('--scale-factor', vp.scale);
+      const tc = await page.getTextContent();
+      textDivs = [];
+      await pdfjsLib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs }).promise;
+    }
     if (key !== V.key || pdf !== V.pdf) return;
     pv.el.innerHTML = '';
     pv.el.appendChild(canvas);
     pv.el.appendChild(tl);
     pv.textDivs = textDivs;
+    pv.ocrSpans = ocrSpans;
     pv.rendered = key;
     highlightPage(pv);
     drawBand(pv);
@@ -1683,9 +1931,57 @@ async function renderPage(pv) {
   }
 }
 
+function ocrLayerFor(pv, vpHeight) {
+  const ow = V.ocr && V.ocr.pages && V.ocr.pages[pv.n];
+  if (!ow) return null;
+  const tl = document.createElement('div');
+  tl.className = 'ocrLayer';
+  const spans = ow.map(([t, x0, y0, x1, y1]) => {
+    const sp = document.createElement('span');
+    sp.textContent = t;
+    sp.style.cssText = `left:${x0 * 100}%;top:${y0 * 100}%;width:${(x1 - x0) * 100}%;height:${(y1 - y0) * 100}%;font-size:${Math.max(6, (y1 - y0) * vpHeight * 0.8)}px`;
+    tl.appendChild(sp);
+    return sp;
+  });
+  return { tl, spans };
+}
+
+function renderImagePage(pv) {
+  const s = scale();
+  const img = document.createElement('img');
+  img.src = V.imgUrl;
+  img.alt = '';
+  img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+  pv.el.innerHTML = '';
+  pv.el.appendChild(img);
+  const o = ocrLayerFor(pv, pv.h * s);
+  if (o) pv.el.appendChild(o.tl);
+  pv.ocrSpans = o ? o.spans : null;
+  pv.textDivs = null;
+  pv.rendered = V.key;
+  highlightPage(pv);
+  drawBand(pv);
+}
+
 function highlightPage(pv) {
-  if (!pv.textDivs) return;
   const opts = searchOpts();
+  if (pv.ocrSpans) {
+    const terms = [];
+    for (const t of S.hl) {
+      if (t.t.includes(' ')) t.t.split(' ').filter(w => w.length >= 3).forEach(w => terms.push({ t: w, exact: true }));
+      else terms.push({ t: t.t, exact: opts.whole });
+    }
+    for (const sp of pv.ocrSpans) {
+      let hit = false;
+      if (terms.length && V.target !== null) {
+        const n = Core.norm(sp.textContent).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+        hit = terms.some(t => t.exact ? n === t.t : n.startsWith(t.t));
+      }
+      sp.classList.toggle('ocr-hit', hit);
+    }
+    return;
+  }
+  if (!pv.textDivs) return;
   for (const sp of pv.textDivs) {
     if (sp.dataset.raw !== undefined) { sp.textContent = sp.dataset.raw; delete sp.dataset.raw; }
     if (!S.hl.length || V.target === null) continue;
@@ -1734,6 +2030,7 @@ function drawBand(pv) {
 }
 
 function refreshHighlights() {
+  if (V.mode === 'text' && V.docId) { const st = vBody.scrollTop; renderTextDoc(); vBody.scrollTop = st; return; }
   V.pages.forEach(pv => { if (pv.rendered) highlightPage(pv); });
 }
 
@@ -1741,10 +2038,18 @@ async function openDocAt(id, unit) {
   if (window.innerWidth < 760) setTab('document');
   const d = docById(id);
   V.target = unit;
-  $('#vCite').textContent = unit ? (mainLabel(unit).text || pathLine(unit) || 'Text') + `, pag. ${unit.page}` : 'Răsfoire document';
+  const paged = d && !isTextKind(d.kind) && d.kind !== 'image';
+  $('#vCite').textContent = unit ? (mainLabel(unit).text || pathLine(unit) || 'Text') + (paged ? `, pag. ${unit.page}` : '') : 'Răsfoire document';
   const ok = await loadDoc(id);
   if (!ok || V.docId !== id) return;
   $('#vDoc').textContent = d ? d.title : '';
+  if (V.mode === 'text') {
+    renderTextDoc();
+    const el = unit ? vBody.querySelector(`[data-i="${unit.i}"]`) : null;
+    if (el) vBody.scrollTo({ top: Math.max(0, el.offsetTop - 70), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    else vBody.scrollTop = 0;
+    return;
+  }
   V.pages.forEach(pv => { if (pv.rendered) { drawBand(pv); highlightPage(pv); } });
   const pageN = unit ? unit.page : 1;
   const pv = V.pages[pageN - 1];
@@ -1757,7 +2062,8 @@ async function openDocAt(id, unit) {
 
 function closeViewer(keepEmpty) {
   if (V.pdf) { try { V.pdf.destroy(); } catch {} }
-  V.pdf = null; V.pages = []; V.docId = null; V.key++;
+  if (V.imgUrl) { URL.revokeObjectURL(V.imgUrl); V.imgUrl = null; }
+  V.pdf = null; V.pages = []; V.docId = null; V.ocr = null; V.mode = 'pdf'; V.key++;
   if (!keepEmpty) {
     vBody.innerHTML = `<div class="v-empty"><div><div class="big">§</div>Alege un rezultat ca să vezi pagina din document,<br>cu textul găsit evidențiat.</div></div>`;
     $('#vDoc').textContent = 'Niciun document deschis';
@@ -1768,6 +2074,7 @@ function closeViewer(keepEmpty) {
 
 vBody.addEventListener('scroll', scheduleRender, { passive: true });
 function setZoom(z) {
+  if (V.mode === 'text') { V.zoom = z; pref.set('zoom', z); $('#zoomVal').textContent = Math.round(z * 100) + '%'; vBody.style.setProperty('--td-zoom', z); return; }
   if (!V.pages.length) { V.zoom = z; $('#zoomVal').textContent = Math.round(z * 100) + '%'; pref.set('zoom', z); return; }
   // păstrează poziția relativă
   const [f] = visibleRange();
@@ -1881,7 +2188,7 @@ async function listAll(q, fields) {
 }
 const resolveItem = (x) => (x.mimeType === SHORTCUT && x.shortcutDetails) ? { ...x, id: x.shortcutDetails.targetId, mimeType: x.shortcutDetails.targetMimeType } : x;
 
-async function listPdfsRecursive(rootId) {
+async function listDocsRecursive(rootId) {
   const out = [], seen = new Set(), stack = [{ id: rootId, path: '' }];
   while (stack.length) {
     const f = stack.pop();
@@ -1893,7 +2200,10 @@ async function listPdfsRecursive(rootId) {
     for (const raw of items) {
       const x = resolveItem(raw);
       if (x.mimeType === FOLDER) stack.push({ id: x.id, path: f.path ? f.path + ' / ' + x.name : x.name });
-      else if (x.mimeType === 'application/pdf' || /\.pdf$/i.test(x.name || '')) out.push({ id: x.id, name: x.name, size: +x.size || 0, modified: raw.modifiedTime || '', path: f.path });
+      else {
+        const kind = kindOf(x.name, x.mimeType);
+        if (kind) out.push({ id: x.id, name: x.name, size: +x.size || 0, modified: raw.modifiedTime || '', path: f.path, kind });
+      }
     }
   }
   return out;
@@ -1913,9 +2223,13 @@ function renderDrive() {
   $('#driveSync').disabled = S.syncing;
   $('#driveAdd').disabled = S.syncing;
   let st = '';
+  const live = tokenValid();
   if (S.syncing) st = S.syncMsg || 'Se sincronizează…';
-  else if (has) st = S.lastSync ? 'Sincronizat ' + fmtWhen(S.lastSync) : 'Nesincronizat încă';
+  else if (has && live) st = 'Verificare automată pornită' + (S.lastSync ? ', ultima ' + fmtWhen(S.lastSync) : '');
+  else if (has) st = S.lastSync ? 'Ultima verificare ' + fmtWhen(S.lastSync) : 'Nesincronizat încă';
   $('#driveStatus').textContent = st;
+  $('#driveSync').classList.toggle('attn', has && !live && !S.syncing);
+  $('#driveSync').title = live ? 'Verifică acum' : 'Un click pornește verificarea automată pentru următoarea oră';
 }
 
 function showDriveNote(msg) {
@@ -1924,9 +2238,11 @@ function showDriveNote(msg) {
   n.hidden = !msg;
 }
 
-async function syncDrive() {
+const tokenValid = () => !!GD.token && Date.now() < GD.exp - 60000;
+async function syncDrive(opts = {}) {
   if (S.syncing || !S.folders.length) return;
-  S.syncing = true; S.syncMsg = 'Se conectează…'; showDriveNote('');
+  if (opts.quiet && !tokenValid()) { renderDrive(); return; }
+  S.syncing = true; S.syncMsg = opts.quiet ? 'Se verifică…' : 'Se conectează…'; if (!opts.quiet) showDriveNote('');
   renderLib();
   let added = 0, changed = 0, removed = 0;
   try {
@@ -1935,7 +2251,7 @@ async function syncDrive() {
     const okFolders = new Set();
     for (const fo of S.folders) {
       try {
-        const files = await listPdfsRecursive(fo.id);
+        const files = await listDocsRecursive(fo.id);
         okFolders.add(fo.id);
         for (const f of files) if (!remote.has(f.id)) remote.set(f.id, { ...f, folder: fo.id });
       } catch (e) {
@@ -1950,15 +2266,18 @@ async function syncDrive() {
     for (const f of remote.values()) {
       let d = S.docs.find(x => x.driveId === f.id);
       if (!d) {
-        d = { id: 'g' + f.id, name: f.name, size: f.size, added: Date.now() + seq++, title: f.name.replace(/\.pdf$/i, ''), status: 'queued', progress: 0, pages: 0, driveId: f.id };
+        d = { id: 'g' + f.id, name: f.name, size: f.size, added: Date.now() + seq++, title: baseName(f.name), status: 'queued', progress: 0, pages: 0, driveId: f.id, kind: f.kind };
         S.docs.push(d);
-        todo.push({ d, f }); added++;
+        if (UNSUPPORTED[f.kind]) { d.status = 'unsupported'; d.driveModified = f.modified; }
+        else { todo.push({ d, f }); added++; }
       } else if (d.driveModified !== f.modified || d.status === 'error') {
-        d.status = 'queued'; d.progress = 0; d.name = f.name; d.size = f.size;
-        if (!d.customTitle) d.title = f.name.replace(/\.pdf$/i, '');
-        todo.push({ d, f }); changed++;
+        d.name = f.name; d.size = f.size; d.kind = f.kind;
+        if (!d.customTitle) d.title = baseName(f.name);
+        if (UNSUPPORTED[f.kind]) { d.status = 'unsupported'; d.driveModified = f.modified; }
+        else { d.status = 'queued'; d.progress = 0; todo.push({ d, f }); changed++; }
       }
       d.driveFolder = f.folder; d.drivePath = f.path;
+      if (d.status === 'unsupported') DB.put('docs', stripDoc(d)).catch(() => {});
     }
     renderLib();
     for (let i = 0; i < todo.length; i++) {
@@ -1968,7 +2287,9 @@ async function syncDrive() {
       d.status = 'downloading';
       renderLib();
       try {
-        const blob = await GD.call('files/' + encodeURIComponent(f.id), { alt: 'media', supportsAllDrives: true }, true);
+        const blob = f.kind === 'gdoc'
+          ? await GD.call('files/' + encodeURIComponent(f.id) + '/export', { mimeType: 'application/pdf' }, true)
+          : await GD.call('files/' + encodeURIComponent(f.id), { alt: 'media', supportsAllDrives: true }, true);
         d.driveModified = f.modified;
         d.status = 'queued';
         queue.push({ d, f: blob });
@@ -1984,7 +2305,8 @@ async function syncDrive() {
     if (added) parts.push(fmtCount(added, 'document nou', 'documente noi'));
     if (changed) parts.push(fmtCount(changed, 'document actualizat', 'documente actualizate'));
     if (removed) parts.push(fmtCount(removed, 'document scos', 'documente scoase') + ' (nu mai sunt în Drive)');
-    toast(parts.length ? 'Drive: ' + parts.join(', ') + '.' : 'Drive: totul este la zi.');
+    if (parts.length || !opts.quiet) toast(parts.length ? 'Drive: ' + parts.join(', ') + '.' : 'Drive: totul este la zi.');
+    if (!opts.quiet) showDriveNote('');
   } catch (e) {
     console.error(e);
     showDriveNote(driveErrorText(e));
@@ -2027,20 +2349,20 @@ async function pkLoad() {
   try {
     const q = cur.id === null
       ? `sharedWithMe=true and trashed=false and mimeType='${FOLDER}'`
-      : `'${cur.id}' in parents and trashed=false and (mimeType='${FOLDER}' or mimeType='application/pdf' or mimeType='${SHORTCUT}')`;
+      : `'${cur.id}' in parents and trashed=false`;
     const items = (await listAll(q, 'files(id,name,mimeType,shortcutDetails)')).map(resolveItem);
     if (req !== PK.reqId) return;
     const coll = new Intl.Collator('ro', { sensitivity: 'base', numeric: true });
     const folders = items.filter(x => x.mimeType === FOLDER).sort((a, b) => coll.compare(a.name, b.name));
-    const pdfs = items.filter(x => x.mimeType === 'application/pdf').sort((a, b) => coll.compare(a.name, b.name));
+    const pdfs = items.filter(x => x.mimeType !== FOLDER && kindOf(x.name, x.mimeType)).sort((a, b) => coll.compare(a.name, b.name));
     let html = folders.map(f => `<li><button class="pk-folder" data-id="${esc(f.id)}" data-name="${esc(f.name)}">${ICON_FOLDER}<span>${esc(f.name)}</span></button></li>`).join('');
     html += pdfs.slice(0, 40).map(f => `<li class="pk-file">${ICON_FILE}<span>${esc(f.name)}</span></li>`).join('');
-    if (pdfs.length > 40) html += `<li class="pk-msg">și încă ${pdfs.length - 40} PDF-uri</li>`;
-    if (!html) html = `<li class="pk-msg">${cur.id === null ? 'Nimeni nu ți-a partajat foldere.' : 'Folderul nu conține subfoldere sau PDF-uri.'}</li>`;
+    if (pdfs.length > 40) html += `<li class="pk-msg">și încă ${pdfs.length - 40} documente</li>`;
+    if (!html) html = `<li class="pk-msg">${cur.id === null ? 'Nimeni nu ți-a partajat foldere.' : 'Folderul nu conține subfoldere sau documente.'}</li>`;
     list.innerHTML = html;
     if (canChoose) {
       $('#pkChoose').disabled = false;
-      $('#pkInfo').textContent = `${fmtCount(pdfs.length, 'PDF', 'PDF-uri')} aici${folders.length ? `, plus ce e în ${fmtCount(folders.length, 'subfolder', 'subfoldere')}` : ''}`;
+      $('#pkInfo').textContent = `${fmtCount(pdfs.length, 'document', 'documente')} aici${folders.length ? `, plus ce e în ${fmtCount(folders.length, 'subfolder', 'subfoldere')}` : ''}`;
     } else $('#pkInfo').textContent = 'Deschide folderul pe care vrei să-l adaugi.';
   } catch (e) {
     if (req !== PK.reqId) return;
@@ -2094,7 +2416,14 @@ $('#pkChoose').onclick = () => {
   syncDrive();
 };
 $('#driveAdd').onclick = openPicker;
-$('#driveSync').onclick = syncDrive;
+$('#driveSync').onclick = () => syncDrive();
+setInterval(() => { if (S.folders.length && tokenValid() && !document.hidden) syncDrive({ quiet: true }); }, 5 * 60 * 1000);
+setInterval(() => { if (S.folders.length && !S.syncing) renderDrive(); }, 30 * 1000);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !S.folders.length) return;
+  if (tokenValid() && Date.now() - S.lastSync > 60 * 1000) syncDrive({ quiet: true });
+  else renderDrive();
+});
 
 /* ---------------- Pornire ---------------- */
 (async () => {
@@ -2110,9 +2439,21 @@ $('#driveSync').onclick = syncDrive;
     try { const units = await DB.get('units', d.id); attachUnits(d.id, units || []); } catch (e) { console.error(e); }
   }
   // documentele rămase neterminate la ultima închidere
-  for (const d of docs) if (d.status !== 'ready') d.status = 'error';
+  for (const d of docs) { if (!d.kind) d.kind = 'pdf'; if (d.status !== 'ready' && d.status !== 'unsupported') d.status = 'error'; }
   renderLib();
   if (S.folders.length) GD.load().catch(() => showDriveNote(driveErrorText({ code: 'gsi' })));
+  const needOcr = docs.filter(d => d.emptyPages > 0 && !d.ocrDone);
+  if (needOcr.length) {
+    OCR.get().then(async () => {
+      for (const d of needOcr) {
+        const blob = await getFile(d.id).catch(() => null);
+        if (!blob || !S.docs.includes(d)) continue;
+        d.status = 'queued';
+        queue.push({ d, f: blob });
+      }
+      renderLib(); pump();
+    }).catch(() => {});
+  }
   if (!docs.length && !S.folders.length && window.innerWidth < 760) setTab('lib');
   runSearch();
 })();
